@@ -1,0 +1,4 @@
+[submodule "isl"]
+	path = isl
+	url = https://github.com/ebi-gene-expression-group/isl
+	branch = develop_codon
