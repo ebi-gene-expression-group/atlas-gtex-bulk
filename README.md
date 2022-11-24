@@ -20,3 +20,5 @@ The goal of this repo in to analyse bulk GTEx V8 bulk data (study id: `E-GTEX-8`
 
 5. Once all libraries have been processed successfully, a final aggregation rule should write final results for E-GTEX-8 in a format similar to studies here `$IRAP_SINGLE_LIB/`.
 
+## Example
+`snakemake -p --use-conda --cores 2 --config input_path=test-data`
