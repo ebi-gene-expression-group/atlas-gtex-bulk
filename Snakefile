@@ -3,6 +3,8 @@ import glob
 
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 
+# probably need to specify here (or in config) the species or the location of the genome/annotations
+
 rule all:
     input: expand(["out/{sample}/{sample}_1_fastqc.html","out/{sample}/{sample}_2_fastqc.html","out/{sample}/{sample}_1.fastq.gz", "out/{sample}/{sample}_2.fastq.gz"], sample=SAMPLES)
 
@@ -35,4 +37,14 @@ rule qc:
 			fastqc {input.fq1} --outdir={params.fqc_dir}
 			fastqc {input.fq2} --outdir={params.fqc_dir}
 		"""
- 
+
+
+rule run_irap:
+	
+
+rule aggreagate_libraries:
+    """
+    Final rule to agregate all library outputs
+    """
+
+
