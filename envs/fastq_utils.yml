@@ -1,0 +1,5 @@
+name: fastqc
+channels:
+        - bioconda
+dependencies:
+        - fastq_utils=0.25.1
