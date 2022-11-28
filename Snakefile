@@ -6,12 +6,31 @@ SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 # probably need to specify here (or in config) the species or the location of the genome/annotations
 
 rule all:
-    input: expand(["out/{sample}/{sample}_1_fastqc.html","out/{sample}/{sample}_2_fastqc.html","out/{sample}/{sample}_1.fastq.gz", "out/{sample}/{sample}_2.fastq.gz"], sample=SAMPLES)
+	input: expand(["out/{sample}/{sample}_1_fastqc.html","out/{sample}/{sample}_2_fastqc.html","out/{sample}/{sample}_1.fastq.gz", "out/{sample}/{sample}_2.fastq.gz"], sample=SAMPLES)
+
+
+rule check_bam:
+        input:
+                config["input_path"]+"/{sample}.bam",
+        output:
+                bam_check = temp("out/{sample}/{sample}_1.bam_checked"),
+		test_out = temp("out/{sample}/{sample}_1_check.txt"),
+		test_log = temp("out/{sample}/{sample}_1_check.log")
+        conda:
+                "envs/rsamtools.yml"
+        shell:
+                """
+                        Rscript scripts/testPairedEndBam.R {input} > {output.test_out} 2> {output.test_log}
+			if cat {output.test_out} | grep -q "TRUE"; then
+				touch {output.bam_check}
+			fi
+		"""
 
 
 rule bam_to_fastq:
 	input:
 		bam = config["input_path"]+"/{sample}.bam",
+		check_bam = rules.check_bam.output.bam_check,
 	output:
 		fastq_1 = "out/{sample}/{sample}_1.fq.gz",
                 fastq_2 = "out/{sample}/{sample}_2.fq.gz"
@@ -22,7 +41,7 @@ rule bam_to_fastq:
 			samtools fastq -c 6 -1 {output.fastq_1} -2 {output.fastq_2} {input.bam}
 		"""
  
-rule validating_fastq:
+checkpoint validating_fastq:
         input:
                 fastq_1 = rules.bam_to_fastq.output.fastq_1,
                 fastq_2 = rules.bam_to_fastq.output.fastq_2,
@@ -48,15 +67,21 @@ rule validating_fastq:
 			touch {output.val_fastq}
 		"""
 
+def aggregate_fastq(wildcards):
+	checkpoint_output = checkpoints.validating_fastq.get(**wildcards).output[0]
+	print(checkoint_output)
+	return expand("out/{sample}/{fq}_1_fastqc.html",
+		sample=wildcards.sample,
+		fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}_1.fastq.gz")).fq)
 
 rule qc:
 	input:
-		fq1 = rules.validating_fastq.output.fastq_1,
-		fq2 = rules.validating_fastq.output.fastq_2,
+		fq1 = "out/{sample}/{fq}_1.fastq.gz",
+                fq2 = "out/{sample}/{fq}_2.fastq.gz",
 		check = rules.validating_fastq.output.val_fastq
 	output:
-		fqc1 = "out/{sample}/{sample}_1_fastqc.html",
-		fqc2 = "out/{sample}/{sample}_2_fastqc.html",
+		fqc1 = "out/{sample}/{fq}_1_fastqc.html",
+		fqc2 = "out/{sample}/{fq}_2_fastqc.html",
 	params:
 		fqc_dir = "out/{sample}/",
 	conda:

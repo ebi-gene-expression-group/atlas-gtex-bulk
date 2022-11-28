@@ -1,0 +1,7 @@
+name: rsamtools
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - bioconductor-rsamtools
