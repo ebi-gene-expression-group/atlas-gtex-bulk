@@ -106,6 +106,12 @@ rule run_irap:
 rule isl_db_update:
     """
     In manual processing we need to update the ISL LIBRARIES table
+
+    DB cannot be accessed by user other than fg_atlas, 
+    so leave a csv file (of lock files) of updates somewhere that ISL can access
+    and use to update the dbs during usual processing.
+
+    This will need additional logic in repo `isl`.
     """
 
 rule aggreagate_libraries:
