@@ -1,0 +1,13 @@
+name: isl
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+  - ebi-gene-expression-group
+dependencies:
+  - bash
+  - atlas-bash-util>=0.1.1
+  - atlas-fastq-provider>=0.4.6
+  - coreutils
+  - lftp
+  - jq
