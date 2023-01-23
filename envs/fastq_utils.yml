@@ -1,4 +1,4 @@
-name: fastqc
+name: fastq_utils
 channels:
   - bioconda
 dependencies:
