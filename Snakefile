@@ -120,4 +120,8 @@ rule aggreagate_libraries:
     $IRAP_SINGLE_LIB/studies/E-GTEX-8/homo_sapiens/
     """
 
+rule final_check:
+    """
+    should look for .complete file
+    """
 
