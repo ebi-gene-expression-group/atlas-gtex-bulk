@@ -1,21 +1,21 @@
 import os
 import glob
 
-SAMPLES, = glob_wildcards(config["input_path"]+f"/{sample}.bam")
+SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 
 # probably need to specify here (or in config) the species or the location of the genome/annotations
 
 rule all:
-    input: expand([f"out/{sample}/{sample}_1_fastqc.html", f"out/{sample}/{sample}_2_fastqc.html", f"out/{sample}/{sample}_1.fastq.gz", f"out/{sample}/{sample}_2.fastq.gz"], sample=SAMPLES)
+    input: expand(["out/{sample}/{sample}_1_fastqc.html", "out/{sample}/{sample}_2_fastqc.html", "out/{sample}/{sample}_1.fastq.gz", "out/{sample}/{sample}_2.fastq.gz"], sample=SAMPLES)
 
 
 rule check_bam:
     input:
-        config["input_path"]+ f"/{sample}.bam"
+        config["input_path"]+ "/{sample}.bam"
     output:
-        bam_check = temp(f"out/{sample}/{sample}_1.bam_checked"),
-        test_out = temp(f"out/{sample}/{sample}_1_check.txt"),
-        test_log = temp(f"out/{sample}/{sample}_1_check.log")
+        bam_check = temp("out/{sample}/{sample}_1.bam_checked"),
+        test_out = temp("out/{sample}/{sample}_1_check.txt"),
+        test_log = temp("out/{sample}/{sample}_1_check.log")
     conda:
         "envs/rsamtools.yml"
     shell:
@@ -28,11 +28,11 @@ rule check_bam:
 
 rule bam_to_fastq:
     input:
-        bam = config["input_path"]+f"/{sample}.bam",
+        bam = config["input_path"]+"/{sample}.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq_1 = f"out/{sample}/{sample}_1.fq.gz",
-        fastq_2 = f"out/{sample}/{sample}_2.fq.gz"
+        fastq_1 = "out/{sample}/{sample}_1.fq.gz",
+        fastq_2 = "out/{sample}/{sample}_2.fq.gz"
     conda: 
         "envs/samtools.yml"
     shell:
@@ -45,9 +45,9 @@ checkpoint validating_fastq:
         fastq_1 = rules.bam_to_fastq.output.fastq_1,
         fastq_2 = rules.bam_to_fastq.output.fastq_2
     output:
-        val_fastq = f"out/{sample}/{sample}_1.fastq.val",
-        fastq_1 = f"out/{sample}/{sample}_1.fastq.gz",
-        fastq_2 = f"out/{sample}/{sample}_2.fastq.gz"
+        val_fastq = "out/{sample}/{sample}_1.fastq.val",
+        fastq_1 = "out/{sample}/{sample}_1.fastq.gz",
+        fastq_2 = "out/{sample}/{sample}_2.fastq.gz"
     conda:
         "envs/fastq_utils.yml"
     shell:
@@ -69,20 +69,20 @@ checkpoint validating_fastq:
 def aggregate_fastq(wildcards):
     checkpoint_output = checkpoints.validating_fastq.get(**wildcards).output[0]
     print(checkoint_output)
-    return expand(f"out/{sample}/{fq}_1_fastqc.html",
+    return expand("out/{sample}/{fq}_1_fastqc.html",
         sample=wildcards.sample,
-        fq=glob_wildcards(os.path.join(checkpoint_output, f"{fq}_1.fastq.gz")).fq)
+        fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}_1.fastq.gz")).fq)
 
 rule qc:
     input:
-        fq1 = f"out/{sample}/{fq}_1.fastq.gz",
-        fq2 = f"out/{sample}/{fq}_2.fastq.gz",
+        fq1 = "out/{sample}/{fq}_1.fastq.gz",
+        fq2 = "out/{sample}/{fq}_2.fastq.gz",
         check = rules.validating_fastq.output.val_fastq
     output:
-        fqc1 = f"out/{sample}/{fq}_1_fastqc.html",
-        fqc2 = f"out/{sample}/{fq}_2_fastqc.html"
+        fqc1 = "out/{sample}/{fq}_1_fastqc.html",
+        fqc2 = "out/{sample}/{fq}_2_fastqc.html"
     params:
-        fqc_dir = f"out/{sample}"
+        fqc_dir = "out/{sample}"
     conda:
         "envs/fastqc.yml"
     shell:
@@ -108,11 +108,9 @@ rule run_irap:
 rule isl_db_update:
     """
     In manual processing we need to update the ISL LIBRARIES table
-
     DB cannot be accessed by user other than fg_atlas, 
     so leave a csv file (or lock files) of updates somewhere that ISL can access
     and use to update the dbs during usual processing.
-
     This will need additional logic in repo `isl`.
     """
 
@@ -126,4 +124,3 @@ rule final_check:
     """
     should look for .complete file
     """
-
