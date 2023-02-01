@@ -100,6 +100,8 @@ rule run_irap:
         fastq_2 = rules.qc.output.fqc2
     params:
         irap_container=config['irap_container']
+    conda:
+    	"envs/isl.yml"   ### change to submodule env once ISL is linked as submodule
     output:
 
 
@@ -108,7 +110,7 @@ rule isl_db_update:
     In manual processing we need to update the ISL LIBRARIES table
 
     DB cannot be accessed by user other than fg_atlas, 
-    so leave a csv file (of lock files) of updates somewhere that ISL can access
+    so leave a csv file (or lock files) of updates somewhere that ISL can access
     and use to update the dbs during usual processing.
 
     This will need additional logic in repo `isl`.
