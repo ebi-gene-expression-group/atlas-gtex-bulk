@@ -96,6 +96,19 @@ rule run_irap:
     #conda:
     	#"envs/isl.yml"   ### change to submodule env once ISL is linked as submodule
     #output:
+    #shell:
+	#"""
+        # fastq_info {input.fastq} pe
+        #if [ $? -ne 0 ]; then
+#            #fastq is PE
+        # iRAP PE command here
+        # echo "ERROR: Failed fastq validation {input.fastq}"
+        #        else
+        # fastq is SE
+        # iRAP SE commands here
+        # echo "validation successful"
+        #            mv {input.fastq} {params.fastq}
+#        fi      	
 
 
 rule isl_db_update:
