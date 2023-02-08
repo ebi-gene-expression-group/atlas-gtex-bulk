@@ -6,7 +6,7 @@ SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 # probably need to specify here (or in config) the species or the location of the genome/annotations
 
 rule all:
-    input: expand(["out/{sample}/{sample}_1.fastq.val"], sample=SAMPLES)
+    input: expand(["out/{sample}/{sample}.fastq.val"], sample=SAMPLES)
 
 
 rule check_bam:
@@ -31,38 +31,33 @@ rule bam_to_fastq:
         bam = config["input_path"]+"/{sample}.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq_1 = "out/{sample}/{sample}_1.fq.gz",
-        fastq_2 = "out/{sample}/{sample}_2.fq.gz"
+        fastq = "out/{sample}/{sample}.fq.gz",
     conda: 
         "envs/samtools.yml"
     shell:
         """
-        samtools fastq -c 6 -1 {output.fastq_1} -2 {output.fastq_2} {input.bam}
+        samtools fastq -0 /dev/null {input.bam} > {output.fastq}
         """
 
 # here if else statement could be modified to run iRAP/ISL for PE and SE data
 checkpoint validating_fastq:
     input:
-        fastq_1 = rules.bam_to_fastq.output.fastq_1,
-        fastq_2 = rules.bam_to_fastq.output.fastq_2
+        fastq = rules.bam_to_fastq.output.fastq,
     output:
-        val_fastq = "out/{sample}/{sample}_1.fastq.val",
+        val_fastq = "out/{sample}/{sample}.fastq.val",
     params:
-        fastq_1 = "out/{sample}/{sample}_1.fastq.gz",
-        fastq_2 = "out/{sample}/{sample}_2.fastq.gz"
+        fastq = "out/{sample}/{sample}.fastq.gz",
     conda:
         "envs/fastq_utils.yml"
     shell:
         """
-        fastq_info {input.fastq_1} {input.fastq_2} 
+        fastq_info {input.fastq}  
         if [ $? -ne 0 ]; then
-            #rm -rf {input.fastq_1}
-            #rm -rf {input.fastq_2}
-            echo "ERROR: Failed fastq validation {input.fastq_1} and {input.fastq_2}"
+            #rm -rf {input.fastq}
+            echo "ERROR: Failed fastq validation {input.fastq}"
         else
             echo "validation successful"
-            mv {input.fastq_1} {params.fastq_1}
-            mv {input.fastq_2} {params.fastq_2}
+            mv {input.fastq} {params.fastq}
         fi
 
         touch {output.val_fastq}
@@ -71,26 +66,23 @@ checkpoint validating_fastq:
 def aggregate_fastq(wildcards):
     checkpoint_output = checkpoints.validating_fastq.get(**wildcards).output[0]
     print(checkoint_output)
-    return expand("out/{sample}/{fq}_1_fastqc.html",
+    return expand("out/{sample}/{fq}_fastqc.html",
         sample=wildcards.sample,
-        fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}_1.fastq.gz")).fq)
+        fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}.fastq.gz")).fq)
 
 rule qc:
     input:
         check = rules.validating_fastq.output.val_fastq
     output:
-        fqc1 = "out/{sample}/{fq}_1_fastqc.html",
-        fqc2 = "out/{sample}/{fq}_2_fastqc.html"
+        fqc = "out/{sample}/{fq}_1_fastqc.html",
     params:
-        fq1 = "out/{sample}/{fq}_1.fastq.gz",
-        fq2 = "out/{sample}/{fq}_2.fastq.gz",
+        fq = "out/{sample}/{fq}.fastq.gz",
         fqc_dir = "out/{sample}"
     conda:
         "envs/fastqc.yml"
     shell:
         """
-        fastqc {params.fq1} --outdir={params.fqc_dir}
-        fastqc {params.fq2} --outdir={params.fqc_dir}
+        fastqc {params.fq} --outdir={params.fqc_dir}
         """
 
 rule run_irap:
@@ -98,8 +90,7 @@ rule run_irap:
     Run IRAP analysis. Need conda isl env and singularity
     """
     #input:
-    #    fastq_1 = rules.qc.output.fqc1,
-    #    fastq_2 = rules.qc.output.fqc2
+    #    fastq_1 = rules.qc.output.fqc,
     #params:
         #irap_container=config['irap_container']
     #conda:
