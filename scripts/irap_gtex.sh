@@ -45,8 +45,6 @@ lsfMem=4096
 irapMem=$(($lsfMem*1000000))
 workingDir=$ISL_WORKING_DIR
 irapDataOption="-i data_dir=$workingDir/data"
-logpath=gtex_bulk_test
 
-
-bsub -e $logpath.err -o $logpath.out -q production "irap_single_lib -A -f -o irap_single_lib -1 ${localFastqPath}_1.fastqsanger.gz -2 ${localFastqPath}_2.fastq│
-sanger.gz -c $conf -s $strand -m $irapMem -t 5 -C $irapDataOption"
+irap_single_lib -A -f -o irap_single_lib -1 ${localFastqPath}_1.fastqsanger.gz -2 ${localFastqPath}_2.fastq│
+sanger.gz -c $conf -s $strand -m $irapMem -t 5 -C $irapDataOption
