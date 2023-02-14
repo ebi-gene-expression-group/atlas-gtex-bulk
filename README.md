@@ -26,3 +26,6 @@ The goal of this repo in to analyse bulk GTEx V8 bulk data (study id: `E-GTEX-8`
 For batch run
 once we have aggregate rule in place we can utilise following batch command to run few samples at a time
 `snakemake -s Snakefile --cores 2 --batch <merge-rule>=[1-n]/<n>`
+
+## test-data
+At the moment some publicly available alignment (BAM) files are available in test-data directory. for further analysis of iRAP/ISL pipeline more data can be downloaded following [iRAP setup data](https://github.com/nunofonseca/irap/wiki/7-Quick-Example#setup-the-data) Wiki
