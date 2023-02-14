@@ -1,6 +1,7 @@
 import os
 import glob
 
+# here we need wildcard contraint based on input file name pattern or it picks up bam file from sub-dirs
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 
 # probably need to specify here (or in config) the species or the location of the genome/annotations
@@ -100,14 +101,13 @@ rule run_irap:
 	#"""
         # fastq_info {input.fastq} pe
         #if [ $? -ne 0 ]; then
-#            #fastq is PE
-        # iRAP PE command here
+#            #fastq is SE
+        # iRAP SE command here
         # echo "ERROR: Failed fastq validation {input.fastq}"
         #        else
-        # fastq is SE
-        # iRAP SE commands here
+        # fastq is PE
+        # iRAP PE commands here
         # echo "validation successful"
-        #            mv {input.fastq} {params.fastq}
 #        fi      	
 
 
