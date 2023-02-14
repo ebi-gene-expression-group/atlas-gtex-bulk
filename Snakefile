@@ -14,15 +14,15 @@ rule check_bam:
         config["input_path"]+ "/{sample}.bam"
     output:
         bam_check = temp("out/{sample}/{sample}_1.bam_checked"),
-        test_out = temp("out/{sample}/{sample}_1_check.txt"),
-        test_log = temp("out/{sample}/{sample}_1_check.log")
     conda:
-        "envs/rsamtools.yml"
+        "envs/samtools.yml"
     shell:
         """
-        Rscript scripts/testPairedEndBam.R {input} > {output.test_out} 2> {output.test_log}
-        if cat {output.test_out} | grep -q "TRUE"; then
-            touch {output.bam_check}
+        samtools quickcheck {input}
+	if [ $? -ne 0 ]; then
+		echo "{input} is not valid BAM"
+	else
+		touch {output.bam_check}
         fi
         """
 
