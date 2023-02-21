@@ -55,12 +55,12 @@ irapDataOption="-i data_dir=$workingDir/data"
 # ==========
 # irap command to trace stage0 incomplete error
 # ==========
-cmd=irap
+cmd=irap 
 irap_options="-i data_dir=$workingDir/data isl_mode=y"
-DATA_DIR=`conf_get_data_dir $conf $irap_options`
+DATA_DIR=`irap_singularity conf_get_data_dir $conf $irap_options`
 # for conf_get_data_dir, see https://github.com/nunofonseca/irap/blob/4e04521f3cd00718cb3ea998d7ef81025c484117/aux/sh/irap_shared.sh#L30
 mem=$irapMem   ### same as above
 threads=5
 
-irap conf=$conf data_dir=$DATA_DIR $irap_options max_mem=$mem max_threads=$threads stage0 -n -q
+irap_singularity irap conf=$conf data_dir=$DATA_DIR $irap_options max_mem=$mem max_threads=$threads stage0 -n -q
 # =====
