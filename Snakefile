@@ -14,16 +14,16 @@ rule check_bam:
     input:
         config["input_path"]+ "/{sample}.bam"
     output:
-        bam_check = "out/{sample}/{sample}_1.bam_checked",
+        bam_check = "out/{sample}/{sample}_1.bam_checked"
     conda:
         "envs/samtools.yml"
     shell:
         """
         samtools quickcheck {input}
-	if [ $? -ne 0 ]; then
-		echo "{input} is not valid BAM"
-	else
-		touch {output.bam_check}
+	    if [ $? -ne 0 ]; then
+		    echo "ERROR: {input} is not a valid BAM file" >&2
+	    else
+		    touch {output.bam_check}
         fi
         """
 
@@ -35,9 +35,10 @@ rule bam_to_fastq:
         fastq = "out/{sample}/{sample}.fq.gz",
     conda: 
         "envs/samtools.yml"
+    threads: 4
     shell:
         """
-        samtools fastq -0 /dev/null {input.bam} > {output.fastq}
+        samtools fastq --threads {threads} -0 /dev/null {input.bam} > {output.fastq}
         """
 
 # here if else statement could be modified to run iRAP/ISL for PE and SE data
@@ -81,46 +82,47 @@ rule qc:
         fqc_dir = "out/{sample}"
     conda:
         "envs/fastqc.yml"
+    threads: 4
     shell:
         """
-        fastqc {params.fq} --outdir={params.fqc_dir}
+        fastqc -c {threads} {params.fq} --outdir={params.fqc_dir}
         """
 
 rule run_irap:
-        input:
-                fastq=rules.bam_to_fastq.output.fastq,
-        output: "out/{sample}.txt"
+    input:
+        fastq=rules.bam_to_fastq.output.fastq,
+    output: "out/{sample}.txt"
 	conda: "envs/isl.yaml"
-        params:
-                private_script=config["private_script"],
-                conf=config["irap_config"],
-                strand="both",
-                irapMem=4096000000,
-                irapDataOption="",
+    params:
+        private_script=config["private_script"],
+        conf=config["irap_config"],
+        strand="both",
+        irapMem=4096000000,
+        irapDataOption="",
 		filename="{sample}"
 	resources: mem_mb=10000	
 	shell:
-                """
-                source {params.private_script}/gtex_bulk_env.sh
-                source {params.private_script}/gtex_bulk_init.sh 
-                source {params.private_script}/irap.sh
+        """
+        source {params.private_script}/gtex_bulk_env.sh
+        source {params.private_script}/gtex_bulk_init.sh 
+        source {params.private_script}/irap.sh
 		cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
 		cat {input.fastq} | grep '^@.*/1$' -A 3 --no-group-separator > {params.filename}_1.fastq
 		cat {input.fastq} | grep '^@.*/2$' -A 3 --no-group-separator > {params.filename}_2.fastq
-                fastq_info {params.filename}_1.fastq {params.filename}_2.fastq
-	        if [ $? -ne 0 ]; then
+        fastq_info {params.filename}_1.fastq {params.filename}_2.fastq
+	    if [ $? -ne 0 ]; then
 	        #fastq is SE
 	        # iRAP SE command here
 	        echo "SE "
-	        else
+	    else
 	        # fastq is PE
-		# iRAP PE commands here
-		cmd="irap_single_lib -A -f -o irap_single_lib/{params.filename} -1 {params.filename}_1.fastq -2 {params.filename}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
-		echo "PE"
-                eval $cmd
-                fi
+		    # iRAP PE commands here
+		    cmd="irap_single_lib -A -f -o irap_single_lib/{params.filename} -1 {params.filename}_1.fastq -2 {params.filename}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
+		    echo "PE"
+            eval $cmd
+        fi
 		touch {output}
-"""
+        """
 
 
 rule isl_db_update:
