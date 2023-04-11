@@ -121,7 +121,7 @@ rule run_irap:
             echo "PE"
             eval $cmd
         fi
-		touch {output}
+        touch {output}
         """
 
 
