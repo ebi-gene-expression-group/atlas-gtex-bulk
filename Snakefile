@@ -106,19 +106,19 @@ rule run_irap:
         source {params.private_script}/gtex_bulk_env.sh
         source {params.private_script}/gtex_bulk_init.sh 
         source {params.private_script}/irap.sh
-		cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
-		cat {input.fastq} | grep '^@.*/1$' -A 3 --no-group-separator > {params.filename}_1.fastq
-		cat {input.fastq} | grep '^@.*/2$' -A 3 --no-group-separator > {params.filename}_2.fastq
+        cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
+        cat {input.fastq} | grep '^@.*/1$' -A 3 --no-group-separator > {params.filename}_1.fastq
+        cat {input.fastq} | grep '^@.*/2$' -A 3 --no-group-separator > {params.filename}_2.fastq
         fastq_info {params.filename}_1.fastq {params.filename}_2.fastq
-	    if [ $? -ne 0 ]; then
-	        #fastq is SE
-	        # iRAP SE command here
-	        echo "SE "
-	    else
-	        # fastq is PE
-		    # iRAP PE commands here
-		    cmd="irap_single_lib -A -f -o irap_single_lib/{params.filename} -1 {params.filename}_1.fastq -2 {params.filename}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
-		    echo "PE"
+        if [ $? -ne 0 ]; then
+            #fastq is SE
+            # iRAP SE command here
+            echo "SE "
+        else
+            # fastq is PE
+            # iRAP PE commands here
+            cmd="irap_single_lib -A -f -o irap_single_lib/{params.filename} -1 {params.filename}_1.fastq -2 {params.filename}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
+            echo "PE"
             eval $cmd
         fi
 		touch {output}
