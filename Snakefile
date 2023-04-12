@@ -7,7 +7,7 @@ SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 # probably need to specify here (or in config) the species or the location of the genome/annotations
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES)
+    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt"
 
 
 rule check_bam:
@@ -144,3 +144,11 @@ rule final_check:
     """
     should look for .complete file
     """
+
+rule merge:
+    input: expand(["out/{sample}.txt"], sample=SAMPLES)
+    output: "done.txt"
+    shell:
+	"""
+	touch {output}
+	"""
