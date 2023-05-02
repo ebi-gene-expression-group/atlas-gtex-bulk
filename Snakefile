@@ -1,5 +1,7 @@
 import os
 import glob
+from snakemake.utils import min_version
+
 
 min_version("6.6.1")
 
@@ -36,7 +38,7 @@ rule bam_to_fastq:
         bam = config["input_path"]+"/{sample}.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq = "out/{sample}/{sample}.fq.gz",
+        fastq = "out/{sample}/{sample}.fq.gz"
     conda: 
         "envs/samtools.yml"
     threads: 4
@@ -49,11 +51,11 @@ rule bam_to_fastq:
 # here if else statement could be modified to run iRAP/ISL for PE and SE data
 checkpoint validating_fastq:
     input:
-        fastq = rules.bam_to_fastq.output.fastq,
+        fastq = rules.bam_to_fastq.output.fastq
     output:
-        val_fastq = "out/{sample}/{sample}.fastq.val",
+        val_fastq = "out/{sample}/{sample}.fastq.val"
     params:
-        fastq = "out/{sample}/{sample}.fastq.gz",
+        fastq = "out/{sample}/{sample}.fastq.gz"
     conda:
         "envs/fastq_utils.yml"
     shell:
@@ -82,7 +84,7 @@ rule qc:
     input:
         check = rules.validating_fastq.output.val_fastq
     output:
-        fqc = "out/{sample}/{fq}_1_fastqc.html",
+        fqc = "out/{sample}/{fq}_1_fastqc.html"
     params:
         fq = "out/{sample}/{fq}.fastq.gz",
         fqc_dir = "out/{sample}"
@@ -97,18 +99,18 @@ rule qc:
 
 rule run_irap:
     input:
-        fastq=rules.bam_to_fastq.output.fastq,
+        fastq=rules.bam_to_fastq.output.fastq
     output: "out/{sample}.txt"
-	conda: "envs/isl.yaml"
+    conda: "envs/isl.yaml"
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
-        root_dir=config["atlas_gtex_root"],   # atlas-gtex-bulk path
+        root_dir=config["atlas_gtex_root"],
         strand="both",
         irapMem=4096000000,
         irapDataOption="",
 	    filename="{sample}"
-    resources: mem_mb=10000	
+    resources: mem_mb=10000
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -167,6 +169,8 @@ rule merge:
     input: expand(["out/{sample}.txt"], sample=SAMPLES)
     output: "done.txt"
     shell:
-	"""
-	touch {output}
-	"""
+        """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+        touch {output}
+        """
+
