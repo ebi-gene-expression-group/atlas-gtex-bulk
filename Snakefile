@@ -96,7 +96,7 @@ rule run_irap:
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
-        root_dir=config["atlas_gtex_root"]   # atlas-gtex-bulk path
+        root_dir=config["atlas_gtex_root"],   # atlas-gtex-bulk path
         strand="both",
         irapMem=4096000000,
         irapDataOption="",
