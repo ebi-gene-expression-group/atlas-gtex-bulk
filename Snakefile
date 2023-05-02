@@ -1,6 +1,8 @@
 import os
 import glob
 
+min_version("6.6.1")
+
 # here we need wildcard contraint based on input file name pattern or it picks up bam file from sub-dirs
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 
@@ -19,6 +21,8 @@ rule check_bam:
         "envs/samtools.yml"
     shell:
         """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+
         samtools quickcheck {input}
 	    if [ $? -ne 0 ]; then
 		    echo "ERROR: {input} is not a valid BAM file" >&2
@@ -38,6 +42,7 @@ rule bam_to_fastq:
     threads: 4
     shell:
         """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         samtools fastq --threads {threads} -0 /dev/null {input.bam} > {output.fastq}
         """
 
@@ -53,6 +58,7 @@ checkpoint validating_fastq:
         "envs/fastq_utils.yml"
     shell:
         """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         fastq_info {input.fastq}  
         if [ $? -ne 0 ]; then
             #rm -rf {input.fastq}
@@ -85,6 +91,7 @@ rule qc:
     threads: 4
     shell:
         """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         fastqc -c {threads} {params.fq} --outdir={params.fqc_dir}
         """
 
@@ -100,13 +107,14 @@ rule run_irap:
         strand="both",
         irapMem=4096000000,
         irapDataOption="",
-		filename="{sample}"
-	resources: mem_mb=10000	
-	shell:
+	    filename="{sample}"
+    resources: mem_mb=10000	
+    shell:
         """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         source {params.private_script}/gtex_bulk_env.sh
         source {params.private_script}/gtex_bulk_init.sh
-        source {params.atlas_gtex_root}/isl/lib/functions.sh
+        source {params.root_dir}/isl/lib/functions.sh
         cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
 
         library={params.filename}
