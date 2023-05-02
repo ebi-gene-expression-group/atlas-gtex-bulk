@@ -21,7 +21,7 @@ The goal of this repo in to analyse bulk GTEx V8 bulk data (study id: `E-GTEX-8`
 5. Once all libraries have been processed successfully, a final aggregation rule should write final results for E-GTEX-8 in a format similar to studies here `$IRAP_SINGLE_LIB/studies`.
 
 ## Example
-`snakemake -p --use-conda --cores 2 --config input_path=test-data private_script=gitlab_dir irap_config=homo_sapiens.conf --keep-going --conda-frontend conda`
+`snakemake -p --use-conda --cores 2 --config input_path=test-data atlas_gtex_root=/repo_directory_path/ private_script=gitlab_dir irap_config=homo_sapiens.conf --keep-going --conda-frontend conda`
 
 For batch run
 once we have aggregate rule in place we can utilise following batch command to run few samples at a time
