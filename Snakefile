@@ -3,7 +3,7 @@ import glob
 from snakemake.utils import min_version
 
 
-min_version("6.6.1")
+min_version("7.25.3")
 
 # here we need wildcard contraint based on input file name pattern or it picks up bam file from sub-dirs
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
