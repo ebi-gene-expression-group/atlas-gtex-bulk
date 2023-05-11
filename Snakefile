@@ -123,9 +123,9 @@ rule run_irap:
         source {params.private_script}/gtex_bulk_env.sh
         source {params.private_script}/gtex_bulk_init.sh
         #source {params.root_dir}/isl/lib/functions.sh
-        source {params.atlas_gtex_root}/isl/lib/generic_routines.sh
-        source {params.atlas_gtex_root}/isl/lib/process_routines.sh
-        source {params.atlas_gtex_root}/isl/lib/irap.sh
+        source {params.root_dir}/isl/lib/generic_routines.sh
+        source {params.root_dir}/isl/lib/process_routines.sh
+        source {params.root_dir}/isl/lib/irap.sh
 	
         cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
 	
