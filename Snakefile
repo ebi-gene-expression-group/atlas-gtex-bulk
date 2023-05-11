@@ -26,10 +26,10 @@ rule check_bam:
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
 
         samtools quickcheck {input}
-	    if [ $? -ne 0 ]; then
-		    echo "ERROR: {input} is not a valid BAM file" >&2
-	    else
-		    touch {output.bam_check}
+        if [ $? -ne 0 ]; then
+            echo "ERROR: {input} is not a valid BAM file" >&2
+        else
+            touch {output.bam_check}
         fi
         """
 
@@ -48,8 +48,11 @@ rule bam_to_fastq:
         samtools fastq --threads {threads} -0 /dev/null {input.bam} > {output.fastq}
         """
 
-# here if else statement could be modified to run iRAP/ISL for PE and SE data
+	
 checkpoint validating_fastq:
+    """
+    Here if else statement could be modified to run iRAP/ISL for PE and SE data.
+    """
     input:
         fastq = rules.bam_to_fastq.output.fastq
     output:
@@ -61,6 +64,7 @@ checkpoint validating_fastq:
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+	
         fastq_info {input.fastq}  
         if [ $? -ne 0 ]; then
             #rm -rf {input.fastq}
@@ -99,7 +103,8 @@ rule qc:
 
 rule run_irap:
     input:
-        fastq=rules.bam_to_fastq.output.fastq
+        fastq=rules.bam_to_fastq.output.fastq,
+	check = rules.validating_fastq.output.val_fastq
     output: "out/{sample}.txt"
     conda: "envs/isl.yaml"
     params:
@@ -109,7 +114,7 @@ rule run_irap:
         strand="both",
         irapMem=4096000000,
         irapDataOption="",
-	    filename="{sample}"
+        filename="{sample}"
     resources: mem_mb=10000
     shell:
         """
@@ -118,15 +123,17 @@ rule run_irap:
         source {params.private_script}/gtex_bulk_init.sh
         source {params.root_dir}/isl/lib/functions.sh
         cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
+	
+	cat {input.check}
 
         library={params.filename}
         workingDir=$ISL_WORKING_DIR
         localFastqPath=$(get_local_relative_library_path $library)
         
-        cat {input.fastq} | grep -E '^@[^\s]+ 1[^\n]+$|^@[^\/\s]+\/1+$' -A 3 --no-group-separator > ${workingDir}/${localFastqPath}_1.fastq
-        cat {input.fastq} | grep -E '^@[^\s]+ 2[^\n]+$|^@[^\/\s]+\/2+$' -A 3 --no-group-separator > ${workingDir}/${localFastqPath}_2.fastq
+        cat {input.fastq} | grep -E '^@[^\s]+ 1[^\n]+$|^@[^\/\s]+\/1+$' -A 3 --no-group-separator > ${{workingDir}}/${{localFastqPath}}_1.fastq
+        cat {input.fastq} | grep -E '^@[^\s]+ 2[^\n]+$|^@[^\/\s]+\/2+$' -A 3 --no-group-separator > ${{workingDir}}/${{localFastqPath}}_2.fastq
 
-        sepe=$( fastq_info ${workingDir}/${localFastqPath}_1.fastq ${workingDir}/${localFastqPath}_2.fastq )
+        sepe=$( fastq_info ${{workingDir}}/${{localFastqPath}}_1.fastq ${{workingDir}}/${{localFastqPath}}_2.fastq )
 
         pushd $workingDir > /dev/null
 
@@ -136,7 +143,7 @@ rule run_irap:
             echo "SE "
         else
             # fastq is PE
-            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${localFastqPath}_1.fastq -2 ${localFastqPath}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
             echo "PE"
             eval $cmd
         fi
