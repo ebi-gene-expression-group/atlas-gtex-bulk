@@ -107,6 +107,7 @@ rule run_irap:
 	check = rules.validating_fastq.output.val_fastq
     output: "out/{sample}.txt"
     conda: "envs/isl.yaml"
+    log: "logs/{sample}_irap.log"
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
