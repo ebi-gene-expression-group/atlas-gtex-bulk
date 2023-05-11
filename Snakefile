@@ -122,7 +122,11 @@ rule run_irap:
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         source {params.private_script}/gtex_bulk_env.sh
         source {params.private_script}/gtex_bulk_init.sh
-        source {params.root_dir}/isl/lib/functions.sh
+        #source {params.root_dir}/isl/lib/functions.sh
+        source {params.atlas_gtex_root}/isl/lib/generic_routines.sh
+        source {params.atlas_gtex_root}/isl/lib/process_routines.sh
+        source {params.atlas_gtex_root}/isl/lib/irap.sh
+	
         cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
 	
 	cat {input.check}
@@ -130,11 +134,14 @@ rule run_irap:
         library={params.filename}
         workingDir=$ISL_WORKING_DIR
         localFastqPath=$(get_local_relative_library_path $library)
+	
+	echo "workingDir: $workingDir"
+	echo "localFastqPath: $localFastqPath"
         
-        cat {input.fastq} | grep -E '^@[^\s]+ 1[^\n]+$|^@[^\/\s]+\/1+$' -A 3 --no-group-separator > ${{workingDir}}/${{localFastqPath}}_1.fastq
-        cat {input.fastq} | grep -E '^@[^\s]+ 2[^\n]+$|^@[^\/\s]+\/2+$' -A 3 --no-group-separator > ${{workingDir}}/${{localFastqPath}}_2.fastq
+        cat {input.fastq} | grep -E '^@[^\s]+ 1[^\n]+$|^@[^\/\s]+\/1+$' -A 3 --no-group-separator > $workingDir/${{localFastqPath}}_1.fastq
+        cat {input.fastq} | grep -E '^@[^\s]+ 2[^\n]+$|^@[^\/\s]+\/2+$' -A 3 --no-group-separator > $workingDir/${{localFastqPath}}_2.fastq
 
-        sepe=$( fastq_info ${{workingDir}}/${{localFastqPath}}_1.fastq ${{workingDir}}/${{localFastqPath}}_2.fastq )
+        sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
 
         pushd $workingDir > /dev/null
 
