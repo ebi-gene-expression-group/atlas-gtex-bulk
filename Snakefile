@@ -142,6 +142,8 @@ rule run_irap:
 	
 	echo "workingDir: $workingDir"
 	echo "localFastqPath: $localFastqPath"
+
+        mkdir -p $(dirname $workingDir/$localFastqPath)
         
         cat {input.fastq} | grep -E '^@[^\s]+ 1[^\n]+$|^@[^\/\s]+\/1+$' -A 3 --no-group-separator > $workingDir/${{localFastqPath}}_1.fastq
         cat {input.fastq} | grep -E '^@[^\s]+ 2[^\n]+$|^@[^\/\s]+\/2+$' -A 3 --no-group-separator > $workingDir/${{localFastqPath}}_2.fastq
