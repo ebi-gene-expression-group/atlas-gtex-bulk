@@ -132,7 +132,9 @@ rule run_irap:
 	cat {input.check}
 
         library={params.filename}
+        echo "library: $library"
         workingDir=$ISL_WORKING_DIR
+	which get_local_relative_library_path
         localFastqPath=$(get_local_relative_library_path $library)
 	
 	echo "workingDir: $workingDir"
