@@ -120,6 +120,8 @@ rule run_irap:
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+	exec &> "{log}"
+		
         source {params.private_script}/gtex_bulk_env.sh
         source {params.private_script}/gtex_bulk_init.sh
         #source {params.root_dir}/isl/lib/functions.sh
@@ -135,6 +137,7 @@ rule run_irap:
         echo "library: $library"
         workingDir=$ISL_WORKING_DIR
 	which get_local_relative_library_path
+	which get_library_path
         localFastqPath=$(get_local_relative_library_path $library)
 	
 	echo "workingDir: $workingDir"
