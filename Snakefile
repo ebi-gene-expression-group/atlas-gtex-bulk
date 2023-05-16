@@ -140,17 +140,17 @@ rule run_irap:
         source {params.root_dir}/scripts/aux.sh
 
         which get_local_relative_library_path
-	    which get_library_path
+        which get_library_path
 
 
         localFastqPath=$(get_local_relative_library_path $library )
 	
-	    echo "workingDir: $workingDir"
-	    echo "localFastqPath: $localFastqPath"
+        echo "workingDir: $workingDir"
+        echo "localFastqPath: $localFastqPath"
         
         mkdir -p $(dirname $workingDir/$localFastqPath)
 
-	    split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+        split_fastq {input.fastq} $workingDir ${{localFastqPath}}
 
         sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
         echo "sepe: $sepe"
@@ -163,7 +163,7 @@ rule run_irap:
             echo "SE "
         else
             # fastq is PE
-	        echo "Calling irap_single_lib..."
+            echo "Calling irap_single_lib..."
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
             echo "PE"
             eval $cmd
