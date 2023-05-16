@@ -6,6 +6,7 @@ channels:
   - ebi-gene-expression-group
 dependencies:
   - bash
+  - grep
   - atlas-bash-util>=0.1.1
   - atlas-fastq-provider>=0.4.6
   - coreutils

@@ -136,19 +136,24 @@ rule run_irap:
         library={params.filename}
         echo "library: $library"
         workingDir=$ISL_WORKING_DIR
-	which get_local_relative_library_path
-	which get_library_path
-        localFastqPath=$(get_local_relative_library_path $library)
-	
-	echo "workingDir: $workingDir"
-	echo "localFastqPath: $localFastqPath"
 
-        mkdir -p $(dirname $workingDir/$localFastqPath)
+        source {params.root_dir}/scripts/aux.sh
+
+        which get_local_relative_library_path
+	    which get_library_path
+
+
+        localFastqPath=$(get_local_relative_library_path $library )
+	
+	    echo "workingDir: $workingDir"
+	    echo "localFastqPath: $localFastqPath"
         
-        cat {input.fastq} | grep -E '^@[^\s]+ 1[^\n]+$|^@[^\/\s]+\/1+$' -A 3 --no-group-separator > $workingDir/${{localFastqPath}}_1.fastq
-        cat {input.fastq} | grep -E '^@[^\s]+ 2[^\n]+$|^@[^\/\s]+\/2+$' -A 3 --no-group-separator > $workingDir/${{localFastqPath}}_2.fastq
+        mkdir -p $(dirname $workingDir/$localFastqPath)
+
+	    split_fastq {input.fastq} $workingDir ${{localFastqPath}}
 
         sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
+        echo "sepe: $sepe"
 
         pushd $workingDir > /dev/null
 
@@ -158,6 +163,7 @@ rule run_irap:
             echo "SE "
         else
             # fastq is PE
+	        echo "Calling irap_single_lib..."
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
             echo "PE"
             eval $cmd
@@ -195,4 +201,3 @@ rule merge:
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         touch {output}
         """
-
