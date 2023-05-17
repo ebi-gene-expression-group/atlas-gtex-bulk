@@ -7,6 +7,7 @@ channels:
 dependencies:
   - bash
   - grep
+  - fastq_utils
   - atlas-bash-util>=0.1.1
   - atlas-fastq-provider>=0.4.6
   - coreutils
