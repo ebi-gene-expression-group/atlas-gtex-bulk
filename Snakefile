@@ -152,12 +152,11 @@ rule run_irap:
 
         split_fastq {input.fastq} $workingDir ${{localFastqPath}}
 
-        sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
-        echo "sepe: $sepe"
-
         pushd $workingDir > /dev/null
+	
+        sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
 
-        if [ $sepe -ne 0 ]; then
+        if [ $? -ne 0 ]; then
             # fastq is SE
             # iRAP SE command here
             echo "SE "
