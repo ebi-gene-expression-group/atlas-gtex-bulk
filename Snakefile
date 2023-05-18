@@ -163,11 +163,17 @@ rule run_irap:
         else
             # fastq is PE
             echo "Calling irap_single_lib..."
+            cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
+            echo "stage0 will run now:"
+            eval $cmd
+	    
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
-            echo "PE"
+            echo "PE IRAP will run now:"
             eval $cmd
         fi
 
+        popd
+        # The files to collected by aggregation from irap are in $IRAP_SINGLE_LIB/out
         touch {output}
         """
 
