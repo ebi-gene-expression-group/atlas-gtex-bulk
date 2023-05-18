@@ -59,18 +59,18 @@ fi
 
 while read -r library; do
     resultsDir=$(process_results_dir $library irap_single_lib $organism no no)
-    local libraryPathsForStudy="$libraryPathsForStudy $resultsDir"
+    libraryPathsForStudy="$libraryPathsForStudy $resultsDir"
 
     # Check versions. Take out the parameters, which aren't helpful for
     # users anyway, specifying config file paths etc. Deal with either
     # versions.tsv or irap.vesions.tsv, whichever is available
  
-    local versionsFile="${resultsDir}/versions.tsv"
+    versionsFile="${resultsDir}/versions.tsv"
     if [ ! -s "$versionsFile" ]; then
         versionsFile="${resultsDir}/irap.versions.tsv"
     fi
 
-    local libVersions=$(cat "$versionsFile" | grep -v "iRAP params")
+    libVersions=$(cat "$versionsFile" | grep -v "iRAP params")
     
     if [ -z "$versionString" ]; then
         versionString=$libVersions
@@ -83,7 +83,7 @@ done <<< "$libs"
 
 # Write library paths to file to pass to iRAP for aggregation
 
-local aux=${ISL_TEMP_DIR}/aux.${studyId}.${organism}.$$
+aux=${ISL_TEMP_DIR}/aux.${studyId}.${organism}.$$
 echo $libraryPathsForStudy > $aux
             
 # Submit aggregation to cluster
