@@ -9,9 +9,10 @@ min_version("7.25.3")
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
 
 # probably need to specify here (or in config) the species or the location of the genome/annotations
+FIRST_SAMPLE = SAMPLES[0]
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt"
+    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt", expand(["out/stage0_{sample}.txt"], sample=SAMPLES[0])
 
 
 rule check_bam:
@@ -38,7 +39,7 @@ rule bam_to_fastq:
         bam = config["input_path"]+"/{sample}.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq = "out/{sample}/{sample}.fq.gz"
+        fastq = "out/{sample}/{sample}.fq"
     conda: 
         "envs/samtools.yml"
     threads: 4
@@ -58,7 +59,7 @@ checkpoint validating_fastq:
     output:
         val_fastq = "out/{sample}/{sample}.fastq.val"
     params:
-        fastq = "out/{sample}/{sample}.fastq.gz"
+        fastq = "out/{sample}/{sample}.fastq"
     conda:
         "envs/fastq_utils.yml"
     shell:
@@ -90,7 +91,7 @@ rule qc:
     output:
         fqc = "out/{sample}/{fq}_1_fastqc.html"
     params:
-        fq = "out/{sample}/{fq}.fastq.gz",
+        fq = "out/{sample}/{fq}.fastq",
         fqc_dir = "out/{sample}"
     conda:
         "envs/fastqc.yml"
@@ -101,13 +102,16 @@ rule qc:
         fastqc -c {threads} {params.fq} --outdir={params.fqc_dir}
         """
 
-rule run_irap:
+rule run_irap_stage0:
+    """
+    This ensures Irap stage0 is run only once, for the first sample
+    """
     input:
         fastq=rules.bam_to_fastq.output.fastq,
-	check = rules.validating_fastq.output.val_fastq
-    output: "out/{sample}.txt"
+        check = rules.validating_fastq.output.val_fastq
+    output: "out/stage0_{sample}.txt"
     conda: "envs/isl.yaml"
-    log: "logs/{sample}_irap.log"
+    log: "logs/{sample}_irap_stage0.log"
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -120,7 +124,7 @@ rule run_irap:
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
-	exec &> "{log}"
+        exec &> "{log}"
 		
         source {params.private_script}/gtex_bulk_env.sh
         source {params.private_script}/gtex_bulk_init.sh
@@ -131,7 +135,7 @@ rule run_irap:
 	
         cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
 	
-	cat {input.check}
+        cat {input.check}
 
         library={params.filename}
         echo "library: $library"
@@ -166,13 +170,92 @@ rule run_irap:
             cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
             echo "stage0 will run now:"
             eval $cmd
+            echo "stage0 finished"
+        fi
+
+        popd
+
+        touch {output}
+        """
+
+
+rule run_irap:
+    input:
+        fastq=rules.bam_to_fastq.output.fastq,
+        check = rules.validating_fastq.output.val_fastq,
+        stage0_completed=rules.run_irap_stage0.output
+    output: "out/{sample}.txt"
+    conda: "envs/isl.yaml"
+    log: "logs/{sample}_irap.log"
+    params:
+        private_script=config["private_script"],
+        conf=config["irap_config"],
+        root_dir=config["atlas_gtex_root"],
+        strand="both",
+        irapMem=4096000000,
+        irapDataOption="",
+        filename="{sample}",
+        first_sample=FIRST_SAMPLE
+    resources: mem_mb=10000
+    shell:
+        """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+        exec &> "{log}"
+		
+        source {params.private_script}/gtex_bulk_env.sh
+        #source {params.private_script}/gtex_bulk_init.sh
+        #source {params.root_dir}/isl/lib/functions.sh
+        source {params.root_dir}/isl/lib/generic_routines.sh
+        source {params.root_dir}/isl/lib/process_routines.sh
+        source {params.root_dir}/isl/lib/irap.sh
+	
+        ##cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
+	
+        cat {input.check}
+
+        library={params.filename}
+        echo "library: $library"
+        workingDir=$ISL_WORKING_DIR
+
+        source {params.root_dir}/scripts/aux.sh
+
+        which get_local_relative_library_path
+        which get_library_path
+
+
+        localFastqPath=$(get_local_relative_library_path $library )
+	
+        echo "workingDir: $workingDir"
+        echo "localFastqPath: $localFastqPath"
+
+        echo "sample: {wildcards.sample}"
+        echo "first sample: {params.first_sample}"
+
+        if [[ "{wildcards.sample}" != "{params.first_sample}" ]]; then
+            mkdir -p $(dirname $workingDir/$localFastqPath)
+            split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+        fi
+
+        pushd $workingDir > /dev/null
+	
+        sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
+
+        if [ $? -ne 0 ]; then
+            # fastq is SE
+            # iRAP SE command here
+            echo "SE "
+        else
+            # fastq is PE
+            echo "Calling irap_single_lib..."
 	    
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
             echo "PE IRAP will run now:"
             eval $cmd
+            echo "irap_single_lib finished for {wildcards.sample}"
         fi
 
         popd
+
         # The files to collected by aggregation from irap are in $IRAP_SINGLE_LIB/out
         touch {output}
         """
