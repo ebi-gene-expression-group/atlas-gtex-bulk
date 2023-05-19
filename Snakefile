@@ -39,14 +39,20 @@ rule bam_to_fastq:
         bam = config["input_path"]+"/{sample}.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq = "out/{sample}/{sample}.fq"
+        fastq = "out/{sample}/{sample}.fq",
+        sorted_bam="out/{sample}/sorted_{sample}.bam"
     conda: 
         "envs/samtools.yml"
     threads: 4
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
-        samtools fastq --threads {threads} -0 /dev/null {input.bam} > {output.fastq}
+        samtools sort -n --threads {threads} -o {output.sorted_bam} {input.bam}
+
+        #If the input contains read-pairs which are to be interleaved or written to separate 
+        #files in the same order, then the input should be first collated by name. Use samtools 
+        #collate or samtools sort -n to ensure this.
+        samtools fastq --threads {threads} -0 /dev/null {output.sorted_bam} > {output.fastq}
         """
 
 	
@@ -154,7 +160,8 @@ rule run_irap_stage0:
         
         mkdir -p $(dirname $workingDir/$localFastqPath)
 
-        split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+        #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+        reformat.sh int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
 
         pushd $workingDir > /dev/null
 	
@@ -233,7 +240,8 @@ rule run_irap:
 
         if [[ "{wildcards.sample}" != "{params.first_sample}" ]]; then
             mkdir -p $(dirname $workingDir/$localFastqPath)
-            split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+            #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+            reformat.sh int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
         fi
 
         pushd $workingDir > /dev/null
