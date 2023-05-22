@@ -43,7 +43,8 @@ rule bam_to_fastq:
         sorted_bam="out/{sample}/sorted_{sample}.bam"
     conda: 
         "envs/samtools.yml"
-    threads: 4
+    threads: 8
+    resources: mem_mb=4000
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -162,7 +163,7 @@ rule run_irap_stage0:
         mkdir -p $(dirname $workingDir/$localFastqPath)
 
         #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-        reformat.sh int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+        reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
 
         pushd $workingDir > /dev/null
 	
@@ -243,7 +244,7 @@ rule run_irap:
         if [[ "{wildcards.sample}" != "{params.first_sample}" ]]; then
             mkdir -p $(dirname $workingDir/$localFastqPath)
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-            reformat.sh int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
         fi
 
         pushd $workingDir > /dev/null
