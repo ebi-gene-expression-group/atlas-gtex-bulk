@@ -101,7 +101,7 @@ else
     # Monitor aggregation job
     monitorLogPrefix=$(get_log_prefix processing 'aggregate' ${studyId}.${organism})
     monitorLog="${monitorLogPrefix}.log"
-    isl_lsf_monitor 'aggregate' "${studyId}.${organism}" $monitorLog
+    isl_lsf_monitor 'aggregate' 1 $monitorLog
 
     # Once done, move to the fg_atlas ISL studies dir.
     if [ $? -ne 0 ]; then
