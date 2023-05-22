@@ -127,6 +127,7 @@ rule run_irap_stage0:
         irapDataOption="",
         filename="{sample}"
     resources: mem_mb=10000
+    threads: 5
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -174,7 +175,7 @@ rule run_irap_stage0:
         else
             # fastq is PE
             echo "Calling irap_single_lib..."
-            cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
+            cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
             echo "stage0 will run now:"
             eval $cmd
             echo "stage0 finished"
@@ -204,6 +205,7 @@ rule run_irap:
         filename="{sample}",
         first_sample=FIRST_SAMPLE
     resources: mem_mb=10000
+    threads: 5
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -256,7 +258,7 @@ rule run_irap:
             # fastq is PE
             echo "Calling irap_single_lib..."
 	    
-            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t 5 -C {params.irapDataOption}"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
             echo "PE IRAP will run now:"
             eval $cmd
             echo "irap_single_lib finished for {wildcards.sample}"
