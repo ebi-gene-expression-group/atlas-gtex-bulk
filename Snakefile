@@ -11,6 +11,23 @@ SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.Aligned.sortedByCoord.
 # probably need to specify here (or in config) the species or the location of the genome/annotations
 FIRST_SAMPLE = str(SAMPLES[0])
 
+def get_mem_mb(wildcards, attempt):
+    """
+    To adjust resources in the rules 
+    attemps = reiterations + 1
+    Max number attemps = 8
+    """
+    mem_avail = [ 2, 2, 4, 8, 16, 64, 128, 300 ]  
+    if attempt > len(mem_avail):
+        print(f"Attemps {attempt} exceeds the maximum number of attemps: {len(mem_avail)}")
+        print(f"modify value of --restart-times or adjust mem_avail resources accordingly")
+        sys.exit(1)
+    else:
+        return mem_avail[attempt-1] * 1000
+
+
+
+
 rule all:
     input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt", f"out/stage0_{FIRST_SAMPLE}.txt"
 
@@ -92,7 +109,7 @@ def aggregate_fastq(wildcards):
         sample=wildcards.sample,
         fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}.fastq.gz")).fq)
 
-rule qc:
+rule fastqc:
     input:
         check = rules.validating_fastq.output.val_fastq
     output:
