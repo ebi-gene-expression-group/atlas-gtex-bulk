@@ -102,11 +102,15 @@ else
     monitorLog="${monitorLogPrefix}.log"
     isl_lsf_monitor 'aggregate' "${studyId}.${organism}" $monitorLog
 
-    # Once done, move to the fg_atlas ISL studies dir. ##########
+    # Once done, move to the fg_atlas ISL studies dir.
     if [ $? -ne 0 ]; then
-        echo "LSF processing completed with errors" 2
+        echo "LSF processing completed with errors"
     else
-        echo "LSF processing completed, no errors" 2
+        echo "LSF processing completed, no errors"
+
+        # Move results to results directory
+        resultsDir=$(process_results_dir $studyId aggregate $organism 'no')
+        rm -rf $resultsDir && mkdir -p $(dirname $resultsDir) && mv $workingDir $resultsDir            
     fi
 fi
 
