@@ -110,6 +110,9 @@ def aggregate_fastq(wildcards):
         fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}.fastq.gz")).fq)
 
 rule fastqc:
+    """
+    Not currently used
+    """
     input:
         check = rules.validating_fastq.output.val_fastq
     output:
@@ -145,7 +148,7 @@ rule run_irap_stage0:
         irapDataOption="",
         filename= f"{FIRST_SAMPLE}"
     resources: mem_mb=10000
-    threads: 5
+    threads: 16
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -223,7 +226,7 @@ rule run_irap:
         filename="{sample}",
         first_sample=FIRST_SAMPLE
     resources: mem_mb=10000
-    threads: 5
+    threads: 16
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
