@@ -9,10 +9,10 @@ min_version("7.25.3")
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam")
 
 # probably need to specify here (or in config) the species or the location of the genome/annotations
-FIRST_SAMPLE = SAMPLES[0]
+FIRST_SAMPLE = str(SAMPLES[0])
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt", expand(["out/stage0_{sample}.txt"], sample=SAMPLES[0])
+    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt", f"out/stage0_{FIRST_SAMPLE}.txt"
 
 
 rule check_bam:
@@ -36,7 +36,7 @@ rule check_bam:
 
 rule bam_to_fastq:
     input:
-        bam = config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam,
+        bam = config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
         fastq = "out/{sample}/{sample}.fq",
@@ -44,7 +44,7 @@ rule bam_to_fastq:
     conda: 
         "envs/samtools.yml"
     threads: 8
-    resources: mem_mb=4000
+    resources: mem_mb=8000
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -114,11 +114,11 @@ rule run_irap_stage0:
     This ensures Irap stage0 is run only once, for the first sample
     """
     input:
-        fastq=rules.bam_to_fastq.output.fastq,
-        check = rules.validating_fastq.output.val_fastq
-    output: "out/stage0_{sample}.txt"
+        fastq= f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq",
+        check = f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fastq.val"
+    output: f"out/stage0_{FIRST_SAMPLE}.txt"
     conda: "envs/isl.yaml"
-    log: "logs/{sample}_irap_stage0.log"
+    log: f"logs/irap_stage0_{FIRST_SAMPLE}.log"
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -126,7 +126,7 @@ rule run_irap_stage0:
         strand="both",
         irapMem=4096000000,
         irapDataOption="",
-        filename="{sample}"
+        filename= f"{FIRST_SAMPLE}"
     resources: mem_mb=10000
     threads: 5
     shell:
