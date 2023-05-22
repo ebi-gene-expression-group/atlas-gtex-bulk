@@ -89,11 +89,12 @@ echo $libraryPathsForStudy > $aux
 # Submit aggregation to cluster
 
 aggrCmd="irap_single_lib2report_atlas -B -j 4 folders_file=$aux out=$ISL_WORKING_DIR/studies/$studyId/$organism name=$studyId"
+echo "${aggrCmd}"   ###
 isl_lsf_submit 'aggregate' ${studyId}.${organism} "/irap_gtex" $lsfMem 1 $ISL_WORKING_DIR "$aggrCmd"
 
 if [ $? -ne 0 ]; then
     echo  "[ERROR] Failed to submit to lsf job: '$aggrCmd'" 
-    return 1
+    exit 1
 else
     echo "Submitted aggregation for ${studyId} ${organism}"
 
@@ -105,6 +106,7 @@ else
     # Once done, move to the fg_atlas ISL studies dir.
     if [ $? -ne 0 ]; then
         echo "LSF processing completed with errors"
+        exit 1
     else
         echo "LSF processing completed, no errors"
 
