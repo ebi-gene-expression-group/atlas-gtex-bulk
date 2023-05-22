@@ -6,7 +6,7 @@ from snakemake.utils import min_version
 min_version("7.25.3")
 
 # here we need wildcard contraint based on input file name pattern or it picks up bam file from sub-dirs
-SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.bam")
+SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam")
 
 # probably need to specify here (or in config) the species or the location of the genome/annotations
 FIRST_SAMPLE = SAMPLES[0]
@@ -17,7 +17,7 @@ rule all:
 
 rule check_bam:
     input:
-        config["input_path"]+ "/{sample}.bam"
+        config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam"
     output:
         bam_check = "out/{sample}/{sample}_1.bam_checked"
     conda:
@@ -36,7 +36,7 @@ rule check_bam:
 
 rule bam_to_fastq:
     input:
-        bam = config["input_path"]+"/{sample}.bam",
+        bam = config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam,
         check_bam = rules.check_bam.output.bam_check
     output:
         fastq = "out/{sample}/{sample}.fq",
