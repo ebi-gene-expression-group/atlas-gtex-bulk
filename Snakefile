@@ -34,6 +34,13 @@ def detect_read_type(wildcards):
                 return "pe"
     return "se"
 
+def detect_read_type_first_sample(bam_file_name):
+    with pysam.AlignmentFile(config["input_path"]+ f"/{bam_file_name}.Aligned.sortedByCoord.out.patched.md.bam", "rb") as bam:
+        for read in bam.fetch():
+            if read.is_paired:
+                return "pe"
+    return "se"
+
 
 rule all:
     input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
@@ -168,7 +175,7 @@ rule run_irap_stage0:
         irapMem=4096000000,
         irapDataOption="",
         filename= f"{FIRST_SAMPLE}",
-        read_type = detect_read_type
+        read_type = detect_read_type_first_sample(FIRST_SAMPLE)
     resources: mem_mb=10000
     threads: 16
     shell:
@@ -208,7 +215,7 @@ rule run_irap_stage0:
 	
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
-            cp {input.fastq} $workingDir/${{localFastqPath}}.fastq
+            cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
 
             echo "Calling irap_single_lib...SE mode"
             cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
@@ -218,7 +225,7 @@ rule run_irap_stage0:
         else
             # fastq is PE
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-            reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib...PE mode"
             cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
@@ -296,7 +303,7 @@ rule run_irap:
 
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
-            cp {input.fastq} $workingDir/${{localFastqPath}}.fastq
+            cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
 
             echo "Calling irap_single_lib...SE mode"
             cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
@@ -305,7 +312,7 @@ rule run_irap:
             echo "irap_single_lib SE finished for {wildcards.sample}"
         else
             # fastq is PE
-            reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             echo "Calling irap_single_lib..."
 	    
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
