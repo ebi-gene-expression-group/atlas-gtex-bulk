@@ -1,5 +1,6 @@
 import os
 import glob
+import pysam
 from snakemake.utils import min_version
 
 
@@ -26,6 +27,12 @@ def get_mem_mb(wildcards, attempt):
         return mem_avail[attempt-1] * 1000
 
 
+def detect_read_type(wildcards):
+    with pysam.AlignmentFile(config["input_path"]+ f"/{wildcards['sample']}.Aligned.sortedByCoord.out.patched.md.bam", "rb") as bam:
+        for read in bam.fetch():
+            if read.is_paired:
+                return "pe"
+    return "se"
 
 
 rule all:
@@ -61,16 +68,31 @@ rule bam_to_fastq:
     conda: 
         "envs/samtools.yml"
     threads: 8
+    params: 
+        read_type = detect_read_type
+    log: "logs/{sample}_bam_to_fastq.log"
     resources: mem_mb=8000
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+        exec &> "{log}"
+
+        echo "read_type: {params.read_type}"
+
         samtools sort -n --threads {threads} -o {output.sorted_bam} {input.bam}
 
-        #If the input contains read-pairs which are to be interleaved or written to separate 
-        #files in the same order, then the input should be first collated by name. Use samtools 
-        #collate or samtools sort -n to ensure this.
-        samtools fastq --threads {threads} -0 /dev/null {output.sorted_bam} > {output.fastq}
+        # detect SE or PE
+        if [[ {params.read_type} == "pe" ]]; then
+            #If the input contains read-pairs which are to be interleaved or written to separate 
+            #files in the same order, then the input should be first collated by name. Use samtools 
+            #collate or samtools sort -n to ensure this.
+            samtools fastq --threads {threads} -0 /dev/null -s /dev/null {output.sorted_bam} > {output.fastq}
+        elif [[ {params.read_type} == "se" ]]; then
+            samtools fastq --threads {threads} {output.sorted_bam} > {output.fastq}
+        else
+            echo "ERROR: read type not detected"
+            exit 1
+        fi
         """
 
 	
