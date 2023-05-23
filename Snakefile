@@ -114,7 +114,6 @@ checkpoint validating_fastq:
 	
         fastq_info {input.fastq}  
         if [ $? -ne 0 ]; then
-            #rm -rf {input.fastq}
             echo "ERROR: Failed fastq validation {input.fastq}"
             mv {input.fastq} {params.fastq}
         else
@@ -168,7 +167,8 @@ rule run_irap_stage0:
         strand="both",
         irapMem=4096000000,
         irapDataOption="",
-        filename= f"{FIRST_SAMPLE}"
+        filename= f"{FIRST_SAMPLE}",
+        read_type = detect_read_type
     resources: mem_mb=10000
     threads: 16
     shell:
@@ -204,20 +204,23 @@ rule run_irap_stage0:
         
         mkdir -p $(dirname $workingDir/$localFastqPath)
 
-        #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-        reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
-
         pushd $workingDir > /dev/null
 	
-        sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
-
-        if [ $? -ne 0 ]; then
+        if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
-            # iRAP SE command here
-            echo "SE "
+            cp {input.fastq} $workingDir/${{localFastqPath}}.fastq
+
+            echo "Calling irap_single_lib...SE mode"
+            cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
+            echo "stage0 will run now:"
+            eval $cmd
+            echo "stage0 finished"
         else
             # fastq is PE
-            echo "Calling irap_single_lib..."
+            #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
+            reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+
+            echo "Calling irap_single_lib...PE mode"
             cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
             echo "stage0 will run now:"
             eval $cmd
@@ -246,7 +249,8 @@ rule run_irap:
         irapMem=4096000000,
         irapDataOption="",
         filename="{sample}",
-        first_sample=FIRST_SAMPLE
+        first_sample=f"{FIRST_SAMPLE}",
+        read_type = detect_read_type
     resources: mem_mb=10000
     threads: 16
     shell:
@@ -285,26 +289,29 @@ rule run_irap:
 
         if [[ "{wildcards.sample}" != "{params.first_sample}" ]]; then
             mkdir -p $(dirname $workingDir/$localFastqPath)
-            #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-            reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
         fi
 
         pushd $workingDir > /dev/null
 	
-        sepe=$( fastq_info $workingDir/${{localFastqPath}}_1.fastq $workingDir/${{localFastqPath}}_2.fastq )
 
-        if [ $? -ne 0 ]; then
+        if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
-            # iRAP SE command here
-            echo "SE "
+            cp {input.fastq} $workingDir/${{localFastqPath}}.fastq
+
+            echo "Calling irap_single_lib...SE mode"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
+            echo "SE IRAP will run now:"
+            eval $cmd
+            echo "irap_single_lib SE finished for {wildcards.sample}"
         else
             # fastq is PE
+            reformat.sh ow=t int=t vpair=t vint=t in={input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             echo "Calling irap_single_lib..."
 	    
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
             echo "PE IRAP will run now:"
             eval $cmd
-            echo "irap_single_lib finished for {wildcards.sample}"
+            echo "irap_single_lib PE finished for {wildcards.sample}"
         fi
 
         popd
@@ -323,18 +330,23 @@ rule isl_db_update:
     This will need additional logic in repo `isl`.
     """
 
-rule aggreagate_libraries:
+rule prepare_aggregation:
+    """
+    Prepare aggregation of irap outputs, which are at
+    $ISL_WORKING_DIR/irap_single_lib/working/irap_single_lib/
+    and copy essential files into:
+    $ISL_WORKING_DIR/irap_single_lib/out/studies
+    """
+
+rule aggregate_libraries:
     """
     Final rule to agregate all library outputs, and store them in a single folder
     $IRAP_SINGLE_LIB/studies/E-GTEX-8/homo_sapiens/
     """
 
-rule final_check:
-    """
-    should look for .complete file
-    """
 
-rule merge:
+
+rule final_workflow_check:
     input: expand(["out/{sample}.txt"], sample=SAMPLES)
     output: "done.txt"
     shell:
