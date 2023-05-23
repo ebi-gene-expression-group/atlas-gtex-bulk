@@ -43,7 +43,7 @@ rule check_bam:
     input:
         config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam"
     output:
-        bam_check = "out/{sample}/{sample}_1.bam_checked"
+        bam_check = temp("out/{sample}/{sample}_1.bam_checked")
     conda:
         "envs/samtools.yml"
     shell:
@@ -103,7 +103,7 @@ checkpoint validating_fastq:
     input:
         fastq = rules.bam_to_fastq.output.fastq
     output:
-        val_fastq = "out/{sample}/{sample}.fastq.val"
+        val_fastq = temp("out/{sample}/{sample}.fastq.val")
     params:
         fastq = "out/{sample}/{sample}.fastq"
     conda:
