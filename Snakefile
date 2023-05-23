@@ -36,7 +36,7 @@ def detect_read_type(wildcards):
 
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "done.txt", f"out/stage0_{FIRST_SAMPLE}.txt"
+    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
 
 
 rule check_bam:
@@ -348,7 +348,7 @@ rule aggregate_libraries:
 
 rule final_workflow_check:
     input: expand(["out/{sample}.txt"], sample=SAMPLES)
-    output: "done.txt"
+    output: "workflow.done"
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
