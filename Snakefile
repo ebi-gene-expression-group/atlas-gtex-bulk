@@ -14,11 +14,11 @@ FIRST_SAMPLE = str(SAMPLES[0])
 
 def get_mem_mb(wildcards, attempt):
     """
-    To adjust resources in the rules 
+    To adjust resources in rule run_irap
     attemps = reiterations + 1
-    Max number attemps = 8
+    Max number attemps = 6
     """
-    mem_avail = [ 2, 2, 4, 8, 16, 64, 128, 300 ]  
+    mem_avail = [ 4, 16, 32, 64, 128, 300 ]  
     if attempt > len(mem_avail):
         print(f"Attemps {attempt} exceeds the maximum number of attemps: {len(mem_avail)}")
         print(f"modify value of --restart-times or adjust mem_avail resources accordingly")
@@ -172,11 +172,11 @@ rule run_irap_stage0:
         conf=config["irap_config"],
         root_dir=config["atlas_gtex_root"],
         strand="both",
-        irapMem=4096000000,
+        irapMem=16000000000,
         irapDataOption="",
         filename= f"{FIRST_SAMPLE}",
         read_type = detect_read_type_first_sample(FIRST_SAMPLE)
-    resources: mem_mb=10000
+    resources: mem_mb=16000
     threads: 16
     shell:
         """
@@ -253,12 +253,11 @@ rule run_irap:
         conf=config["irap_config"],
         root_dir=config["atlas_gtex_root"],
         strand="both",
-        irapMem=4096000000,
         irapDataOption="",
         filename="{sample}",
         first_sample=f"{FIRST_SAMPLE}",
         read_type = detect_read_type
-    resources: mem_mb=10000
+    resources: mem_mb=get_mem_mb
     threads: 16
     shell:
         """
@@ -306,7 +305,7 @@ rule run_irap:
             cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
 
             echo "Calling irap_single_lib...SE mode"
-            cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m "{resources.mem_mb}000000" -t {threads} -C {params.irapDataOption}"
             echo "SE IRAP will run now:"
             eval $cmd
             echo "irap_single_lib SE finished for {wildcards.sample}"
@@ -315,7 +314,7 @@ rule run_irap:
             reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             echo "Calling irap_single_lib..."
 	    
-            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m "{resources.mem_mb}000000" -t {threads} -C {params.irapDataOption}"
             echo "PE IRAP will run now:"
             eval $cmd
             echo "irap_single_lib PE finished for {wildcards.sample}"
