@@ -43,7 +43,7 @@ def detect_read_type_first_sample(bam_file_name):
 
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}.txt"], sample=SAMPLES), "workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
+    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}_prepare_aggregation.txt"], sample=SAMPLES), "workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
 
 
 rule check_bam:
@@ -245,7 +245,7 @@ rule run_irap:
         fastq=rules.bam_to_fastq.output.fastq,
         check = rules.validating_fastq.output.val_fastq,
         stage0_completed=rules.run_irap_stage0.output
-    output: "out/{sample}.txt"
+    output: "out/{sample}_irap_completed.txt"
     conda: "envs/isl.yaml"
     log: "logs/{sample}_irap.log"
     params:
@@ -339,10 +339,50 @@ rule isl_db_update:
 rule prepare_aggregation:
     """
     Prepare aggregation of irap outputs, which are at
-    $ISL_WORKING_DIR/irap_single_lib/working/irap_single_lib/
-    and copy essential files into:
-    $ISL_WORKING_DIR/irap_single_lib/out/studies
+    $ISL_WORKING_DIR/irap_single_lib/{sample[0:5]}/{sample}
+    and copy essential aggregation files into:
+    $IRAP_SINGLE_LIB/out/{sample[0:5]}/{sample}
     """
+    input: "out/{sample}_irap_completed.txt"
+    output: "out/{sample}_prepare_aggregation.txt"
+    log: "logs/{sample}_prepare_agreggation.log"
+    shell:
+        """
+        set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+        exec &> "{log}"
+
+        source {params.private_script}/gtex_bulk_env.sh
+        prefix_sample=$(echo {wildcards.sample} | cut -c1-6)
+
+        # move irap outputs to $ISL_WORKING_DIR/irap_single_lib/out/{sample[0:5]}/{sample}
+
+        destination_dir=$ISL_RESULTS_DIR/$prefix_sample/{wildcards.sample}
+        mkdir -p $destination_dir
+
+        cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}*kallisto*  $destination_dir/
+        cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}*htseq2*  $destination_dir/
+        cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}.versions.tsv  $destination_dir/
+        cp -r $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/logs  $destination_dir/
+        cp -r $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/qc  $destination_dir/
+
+        # file checks
+        if ls "$destination_dir"/*kallisto* 1> /dev/null 2>&1; then
+            echo "Files matching the pattern '*kallisto*' exist in the folder $destination_dir"
+        else
+            echo "No files matching the pattern '*kallisto*' exist in the folder $destination_dir"
+            exit 1
+        fi
+
+        if ls "$destination_dir"/*htseq2* 1> /dev/null 2>&1; then
+            echo "Files matching the pattern '*htseq2*' exist in the folder $destination_dir"
+        else
+            echo "No files matching the pattern '*htseq2*' exist in the folder $destination_dir"
+            exit 1
+        fi        
+
+        touch {output}
+        """
+
 
 rule aggregate_libraries:
     """
@@ -353,7 +393,7 @@ rule aggregate_libraries:
 
 
 rule final_workflow_check:
-    input: expand(["out/{sample}.txt"], sample=SAMPLES)
+    input: expand(["out/{sample}_prepare_aggregation.txt"], sample=SAMPLES)
     output: "workflow.done"
     shell:
         """
