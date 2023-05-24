@@ -348,6 +348,8 @@ rule prepare_aggregation:
     input: "out/{sample}_irap_completed.txt"
     output: "out/{sample}_prepare_aggregation.txt"
     log: "logs/{sample}_prepare_agreggation.log"
+    params:
+        private_script=config["private_script"]
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
