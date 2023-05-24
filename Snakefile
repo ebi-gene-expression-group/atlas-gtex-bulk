@@ -263,6 +263,8 @@ rule run_irap:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
         exec &> "{log}"
+
+        irapMem=$(("{resources.mem_mb}000000"))
 		
         source {params.private_script}/gtex_bulk_env.sh
         #source {params.private_script}/gtex_bulk_init.sh
@@ -305,7 +307,7 @@ rule run_irap:
             cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
 
             echo "Calling irap_single_lib...SE mode"
-            cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m "{resources.mem_mb}000000" -t {threads} -C {params.irapDataOption}"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m $irapMem -t {threads} -C {params.irapDataOption}"
             echo "SE IRAP will run now:"
             eval $cmd
             echo "irap_single_lib SE finished for {wildcards.sample}"
@@ -314,7 +316,7 @@ rule run_irap:
             reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             echo "Calling irap_single_lib..."
 	    
-            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m "{resources.mem_mb}000000" -t {threads} -C {params.irapDataOption}"
+            cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m $irapMem -t {threads} -C {params.irapDataOption}"
             echo "PE IRAP will run now:"
             eval $cmd
             echo "irap_single_lib PE finished for {wildcards.sample}"
