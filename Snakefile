@@ -53,11 +53,22 @@ rule check_bam:
         bam_check = temp("out/{sample}/{sample}_1.bam_checked")
     conda:
         "envs/samtools.yml"
+    threads: 4
+    params:
+        bai = config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam.bai"
     resources: 
         load=2
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+
+        # ensure that the index file exists, otherwise create it
+        if [ -e {params.bai} ]; then
+            echo "BAM index file exists for {wildcards.sample}" >&2
+        else
+            echo "BAM index file does not exist for {wildcards.sample}. Generating it..." >&2
+            samtools index -b --threads {threads} {input}
+        fi
 
         samtools quickcheck {input}
         if [ $? -ne 0 ]; then
