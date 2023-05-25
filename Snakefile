@@ -358,7 +358,7 @@ rule prepare_aggregation:
         source {params.private_script}/gtex_bulk_env.sh
         prefix_sample=$(echo {wildcards.sample} | cut -c1-6)
 
-        # move irap outputs to $ISL_WORKING_DIR/irap_single_lib/out/{sample[0:5]}/{sample}
+        # move irap outputs to $ISL_WORKING_DIR/irap_single_lib/out/sample[0:5]/sample
 
         destination_dir=$ISL_RESULTS_DIR/$prefix_sample/{wildcards.sample}
         mkdir -p $destination_dir
