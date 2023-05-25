@@ -56,7 +56,7 @@ def detect_read_type_first_sample(bam_file_name):
 
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}_prepare_aggregation.done"], sample=SAMPLES), "workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
+    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}/{sample}_prepare_aggregation.done"], sample=SAMPLES), "out/workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
 
 
 rule check_bam:
@@ -64,7 +64,7 @@ rule check_bam:
         config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam"
     output:
         bam_check = temp("out/{sample}/{sample}_1.bam_checked")
-    log: "logs/{sample}_check_bam.log"
+    log: "logs/{sample}/{sample}_check_bam.log"
     conda:
         "envs/samtools.yml"
     threads: 4
@@ -89,6 +89,7 @@ rule check_bam:
         if [ $? -ne 0 ]; then
             echo "ERROR: {input} is not a valid BAM file"
         else
+            echo "BAM file is valid"
             touch {output.bam_check}
         fi
         """
@@ -105,7 +106,7 @@ rule bam_to_fastq:
     threads: 8
     params: 
         read_type = detect_read_type
-    log: "logs/{sample}_bam_to_fastq.log"
+    log: "logs/{sample}/{sample}_bam_to_fastq.log"
     resources: 
         mem_mb=get_mem_mb,
         load=5
@@ -225,7 +226,12 @@ rule run_irap_stage0:
         source {params.root_dir}/isl/lib/irap.sh
 	
         cp {params.private_script}/gtex_bulk_env.sh $IRAP_SINGLE_LIB
-	
+
+        pushd {params.root_dir}/scripts > /dev/null
+        wget https://github.com/biopet/validatefastq/releases/download/v0.1.1/validatefastq-assembly-0.1.1.jar
+        chmod +x validatefastq-assembly-0.1.1.jar
+	    popd
+
         cat {input.check}
 
         library={params.filename}
@@ -244,12 +250,13 @@ rule run_irap_stage0:
         echo "localFastqPath: $localFastqPath"
         
         mkdir -p $(dirname $workingDir/$localFastqPath)
-
+ 
         pushd $workingDir > /dev/null
 	
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
             cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
+            java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}.fastq
 
             echo "Calling irap_single_lib...SE mode"
             cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
@@ -260,6 +267,7 @@ rule run_irap_stage0:
             # fastq is PE
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
             reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib...PE mode"
             cmd="irap_single_lib -0 -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m {params.irapMem} -t {threads} -C {params.irapDataOption}"
@@ -273,15 +281,14 @@ rule run_irap_stage0:
         touch {output}
         """
 
-
 rule run_irap:
     input:
         fastq=rules.bam_to_fastq.output.fastq,
         check = rules.validating_fastq.output.val_fastq,
         stage0_completed=rules.run_irap_stage0.output
-    output: "out/{sample}_irap_completed.done"
+    output: "out/{sample}/{sample}_irap_completed.done"
     conda: "envs/isl.yaml"
-    log: "logs/{sample}_irap.log"
+    log: "logs/{sample}/{sample}_irap.log"
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -341,6 +348,7 @@ rule run_irap:
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
             cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
+            java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}.fastq
 
             echo "Calling irap_single_lib...SE mode"
             cmd="irap_single_lib -A -f -o irap_single_lib -1 $workingDir/${{localFastqPath}}.fastq -c {params.conf} -s {params.strand} -m $irapMem -t {threads} -C {params.irapDataOption}"
@@ -350,6 +358,7 @@ rule run_irap:
         else
             # fastq is PE
             reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
             echo "Calling irap_single_lib..."
 	    
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m $irapMem -t {threads} -C {params.irapDataOption}"
@@ -381,9 +390,9 @@ rule prepare_aggregation:
     and copy essential aggregation files into:
     $IRAP_SINGLE_LIB/out/{sample[0:5]}/{sample}
     """
-    input: "out/{sample}_irap_completed.done"
-    output: "out/{sample}_prepare_aggregation.done"
-    log: "logs/{sample}_prepare_agreggation.log"
+    input: "out/{sample}/{sample}_irap_completed.done"
+    output: "out/{sample}/{sample}_prepare_aggregation.done"
+    log: "logs/{sample}/{sample}_prepare_agreggation.log"
     params:
         private_script=config["private_script"]
     resources: 
@@ -435,8 +444,8 @@ rule aggregate_libraries:
 
 
 rule final_workflow_check:
-    input: expand(["out/{sample}_prepare_aggregation.done"], sample=SAMPLES)
-    output: "workflow.done"
+    input: expand(["out/{sample}/{sample}_prepare_aggregation.done"], sample=SAMPLES)
+    output: "out/workflow.done"
     resources: 
         load=1
     shell:
