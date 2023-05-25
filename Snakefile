@@ -28,13 +28,26 @@ def get_mem_mb(wildcards, attempt):
 
 
 def detect_read_type(wildcards):
+    if os.path.isfile(config["input_path"]+ f"/{wildcards['sample']}.Aligned.sortedByCoord.out.patched.md.bam.bai"):
+        print(f"BAM index exists")
+    else:
+        print(f"generating index...")
+        pysam.index(config["input_path"]+ f"/{wildcards['sample']}.Aligned.sortedByCoord.out.patched.md.bam")
+
     with pysam.AlignmentFile(config["input_path"]+ f"/{wildcards['sample']}.Aligned.sortedByCoord.out.patched.md.bam", "rb") as bam:
         for read in bam.fetch():
             if read.is_paired:
                 return "pe"
     return "se"
 
+
 def detect_read_type_first_sample(bam_file_name):
+    if os.path.isfile(config["input_path"]+ f"/{bam_file_name}.Aligned.sortedByCoord.out.patched.md.bam.bai"):
+        print(f"BAM index exists")
+    else:
+        print(f"generating index...")
+        pysam.index(config["input_path"]+ f"/{bam_file_name}.Aligned.sortedByCoord.out.patched.md.bam")
+
     with pysam.AlignmentFile(config["input_path"]+ f"/{bam_file_name}.Aligned.sortedByCoord.out.patched.md.bam", "rb") as bam:
         for read in bam.fetch():
             if read.is_paired:
@@ -51,6 +64,7 @@ rule check_bam:
         config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam"
     output:
         bam_check = temp("out/{sample}/{sample}_1.bam_checked")
+    log: "logs/{sample}_check_bam.log"
     conda:
         "envs/samtools.yml"
     threads: 4
@@ -61,18 +75,19 @@ rule check_bam:
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
+        exec &> "{log}"
 
         # ensure that the index file exists, otherwise create it
         if [ -e {params.bai} ]; then
-            echo "BAM index file exists for {wildcards.sample}" >&2
+            echo "BAM index file exists for {wildcards.sample}" 
         else
-            echo "BAM index file does not exist for {wildcards.sample}. Generating it..." >&2
+            echo "BAM index file does not exist for {wildcards.sample}. Generating it..." 
             samtools index -b --threads {threads} {input}
         fi
 
         samtools quickcheck {input}
         if [ $? -ne 0 ]; then
-            echo "ERROR: {input} is not a valid BAM file" >&2
+            echo "ERROR: {input} is not a valid BAM file"
         else
             touch {output.bam_check}
         fi
