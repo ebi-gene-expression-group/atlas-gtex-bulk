@@ -50,7 +50,7 @@ if [ $? -ne 0 ]; then
     # e.g., the expt is a mix of public (ENA) and controlled-access libraries.
     warn "Failed to derive runs from SDRF file for $studyId, fetching all libraries from the config XML file instead."
     # libs=$(grep -P "<assay[^>]{0,}>[^<]+</assay>" $ATLAS_PROD/analysis/*/rna-seq/experiments/$studyId/$studyId-configuration.xml | awk -F '[<>]' '{ print $3 }')
-    libs=$(grep -P "<assay[^>]{0,}>[^<]+</assay>" "/homes/irisyu/gtex_bulk/tests/test_data/$studyId/$studyId-configuration.xml" | awk -F '[<>]' '{ print $3 }')
+    libs=$(grep -P "<assay[^>]{0,}>[^<]+</assay>" $STUDY_CONFIG_XML_TEST | awk -F '[<>]' '{ print $3 }')   ### TEST ###
     
     if [ $? -ne 0 ]; then
         warn "[ERROR] Can't get libraries to aggregate for ${studyId}-${organism}"
