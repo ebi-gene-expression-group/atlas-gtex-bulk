@@ -9,7 +9,7 @@ min_version("7.25.3")
 # here we need wildcard contraint based on input file name pattern or it picks up bam file from sub-dirs
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam")
 
-# probably need to specify here (or in config) the species or the location of the genome/annotations
+
 FIRST_SAMPLE = str(SAMPLES[0])
 
 def get_mem_mb(wildcards, attempt):
@@ -95,12 +95,15 @@ rule check_bam:
         """
 
 rule bam_to_fastq:
+    """
+    Produces interleaved Fastq from a sorted bam file
+    """
     input:
         bam = config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq = "out/{sample}/{sample}.fq",
-        sorted_bam="out/{sample}/sorted_{sample}.bam"
+        fastq = temp("out/{sample}/{sample}.fq"),
+        sorted_bam= temp("out/{sample}/sorted_{sample}.bam")
     conda: 
         "envs/samtools.yml"
     threads: 8
@@ -142,6 +145,7 @@ checkpoint validating_fastq:
         fastq = rules.bam_to_fastq.output.fastq
     output:
         val_fastq = temp("out/{sample}/{sample}.fastq.val")
+    log: "logs/{sample}/{sample}_validating_fastq.log"
     params:
         fastq = "out/{sample}/{sample}.fastq"
     conda:
@@ -163,12 +167,12 @@ checkpoint validating_fastq:
         touch {output.val_fastq}
         """
 
-def aggregate_fastq(wildcards):
-    checkpoint_output = checkpoints.validating_fastq.get(**wildcards).output[0]
-    print(checkoint_output)
-    return expand("out/{sample}/{fq}_fastqc.html",
-        sample=wildcards.sample,
-        fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}.fastq.gz")).fq)
+#def aggregate_fastq(wildcards):
+#    checkpoint_output = checkpoints.validating_fastq.get(**wildcards).output[0]
+#    print(checkoint_output)
+#    return expand("out/{sample}/{fq}_fastqc.html",
+#        sample=wildcards.sample,
+#        fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}.fastq.gz")).fq)
 
 rule fastqc:
     """
@@ -374,14 +378,6 @@ rule run_irap:
         """
 
 
-rule isl_db_update:
-    """
-    In manual processing we need to update the ISL LIBRARIES table
-    DB cannot be accessed by user other than fg_atlas, 
-    so leave a csv file (or lock files) of updates somewhere that ISL can access
-    and use to update the dbs during usual processing.
-    This will need additional logic in repo `isl`.
-    """
 
 rule prepare_aggregation:
     """
@@ -429,17 +425,29 @@ rule prepare_aggregation:
         else
             echo "No files matching the pattern '*htseq2*' exist in the folder $destination_dir"
             exit 1
-        fi        
+        fi
+
+        echo "tophat2 align summary:"
+        cat $ISL_WORKING_DIR/processing_data/h/homo_sapiens/irap_qc/tophat2/*/{wildcards.sample}/{wildcards.sample}/align_summary.txt
+
+        echo "removing other temp files in $ISL_RAW_DIR and $ISL_WORKING_DIR "
+        rm -f $ISL_RAW_DIR/$prefix_sample/{wildcards.sample}/{wildcards.sample}*
+        rm -rf $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}
+        rm -rf $ISL_WORKING_DIR/processing_data/h/homo_sapiens/irap_qc/tophat2/*/{wildcards.sample}
+        rm -rf $ISL_WORKING_DIR/processing_data/h/homo_sapiens/irap_qc/none/kallisto/*/{wildcards.sample}
+        rm -rf $ISL_WORKING_DIR/processing_data/h/homo_sapiens/irap_qc/tophat2/htseq2/*/{wildcards.sample}
+
+        echo "GTEX analysis completed for {wildcards.sample}. Ready for aggregation"
 
         touch {output}
         """
 
 
-rule aggregate_libraries:
-    """
-    Final rule to agregate all library outputs, and store them in a single folder
-    $IRAP_SINGLE_LIB/studies/E-GTEX-8/homo_sapiens/
-    """
+#rule aggregate_libraries:
+#    """
+#    Final rule to agregate all library outputs, and store them in a single folder
+#    $IRAP_SINGLE_LIB/studies/E-GTEX-8/homo_sapiens/
+#    """
 
 
 
