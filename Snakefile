@@ -71,7 +71,7 @@ rule check_bam:
     params:
         bai = config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam.bai"
     resources: 
-        load=2
+        load=5
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -151,7 +151,7 @@ checkpoint validating_fastq:
     conda:
         "envs/fastq_utils.yml"
     resources: 
-        load=1
+        load=5
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
