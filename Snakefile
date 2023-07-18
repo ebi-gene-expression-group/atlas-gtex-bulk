@@ -408,7 +408,7 @@ rule prepare_aggregation:
 
         cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}*kallisto*  $destination_dir/
         cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}*htseq2*  $destination_dir/
-        cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}.versions.tsv  $destination_dir/
+        cp $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/{wildcards.sample}.versions.tsv  $destination_dir/irap.versions.tsv
         cp -r $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/logs  $destination_dir/
         cp -r $ISL_WORKING_DIR/irap_single_lib/$prefix_sample/{wildcards.sample}/qc  $destination_dir/
 
