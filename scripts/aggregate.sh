@@ -32,7 +32,7 @@ echo "Done study cleanup"
 # version of this file into irap.versions.tsv.<version> - for inspection
 # later - and log there's more than one version of the file
 
-workingDir=$(process_working_dir "$studyId" aggregate "$organism" 'yes')   ### correct?
+workingDir=$(process_working_dir "$studyId" aggregate "$organism" 'yes')
 versions="${workingDir}/irap.versions.tsv"
 versionString=
 
@@ -49,8 +49,7 @@ if [ $? -ne 0 ]; then
     # which is sometimes be unavoidable for controlled-access experiments,
     # e.g., the expt is a mix of public (ENA) and controlled-access libraries.
     warn "Failed to derive runs from SDRF file for $studyId, fetching all libraries from the config XML file instead."
-    # libs=$(grep -P "<assay[^>]{0,}>[^<]+</assay>" $ATLAS_PROD/analysis/*/rna-seq/experiments/$studyId/$studyId-configuration.xml | awk -F '[<>]' '{ print $3 }')
-    libs=$(grep -P "<assay[^>]{0,}>[^<]+</assay>" $STUDY_CONFIG_XML_TEST | awk -F '[<>]' '{ print $3 }')   ### TEST ###
+    libs=$(grep -P "<assay[^>]{0,}>[^<]+</assay>" $ATLAS_PROD/analysis/*/rna-seq/experiments/$studyId/$studyId-configuration.xml | awk -F '[<>]' '{ print $3 }')
     
     if [ $? -ne 0 ]; then
         warn "[ERROR] Can't get libraries to aggregate for ${studyId}-${organism}"
@@ -90,7 +89,6 @@ echo $libraryPathsForStudy > $aux
 # Submit aggregation to cluster
 
 aggrCmd="irap_single_lib2report_atlas -B -j 4 folders_file=$aux out=$ISL_WORKING_DIR/studies/$studyId/$organism name=$studyId"
-echo "${aggrCmd}"   ###
 isl_lsf_submit 'aggregate' ${studyId}.${organism} "/irap_gtex" $lsfMem 1 $ISL_WORKING_DIR "$aggrCmd"
 
 if [ $? -ne 0 ]; then
