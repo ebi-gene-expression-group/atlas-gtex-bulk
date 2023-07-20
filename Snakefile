@@ -65,7 +65,6 @@ rule check_bam:
     output:
         bam_check = temp("out/{sample}/{sample}_1.bam_checked")
     log: "logs/{sample}/{sample}_check_bam.log"
-    priority: 10
     conda:
         "envs/samtools.yml"
     threads: 4
@@ -111,9 +110,9 @@ rule bam_to_fastq:
     params: 
         read_type = detect_read_type
     log: "logs/{sample}/{sample}_bam_to_fastq.log"
-    priority: 20
     resources: 
         mem_mb=get_mem_mb,
+        disk_mb=200000
         load=5
     shell:
         """
@@ -148,7 +147,6 @@ checkpoint validating_fastq:
     output:
         val_fastq = temp("out/{sample}/{sample}.fastq.val")
     log: "logs/{sample}/{sample}_validating_fastq.log"
-    priority: 30
     params:
         fastq = "out/{sample}/{sample}.fastq"
     conda:
@@ -207,7 +205,6 @@ rule run_irap_stage0:
     output: f"out/stage0_{FIRST_SAMPLE}.txt"
     conda: "envs/isl.yaml"
     log: f"logs/irap_stage0_{FIRST_SAMPLE}.log"
-    priority: 100
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -297,7 +294,6 @@ rule run_irap:
     output: "out/{sample}/{sample}_irap_completed.done"
     conda: "envs/isl.yaml"
     log: "logs/{sample}/{sample}_irap.log"
-    priority: 90
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -394,7 +390,7 @@ rule prepare_aggregation:
     input: "out/{sample}/{sample}_irap_completed.done"
     output: "out/{sample}/{sample}_prepare_aggregation.done"
     log: "logs/{sample}/{sample}_prepare_agreggation.log"
-    priority: 95
+    priority: 5
     params:
         private_script=config["private_script"]
     resources: 
