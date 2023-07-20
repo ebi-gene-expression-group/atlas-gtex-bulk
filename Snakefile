@@ -112,7 +112,7 @@ rule bam_to_fastq:
     log: "logs/{sample}/{sample}_bam_to_fastq.log"
     resources: 
         mem_mb=get_mem_mb,
-        disk_mb=200000
+        disk_mb=200000,
         load=5
     shell:
         """
