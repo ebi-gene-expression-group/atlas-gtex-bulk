@@ -14,7 +14,7 @@ The goal of this repo in to analyse bulk GTEx V8 bulk data (study id: `E-GTEX-8`
 
 1. We want to keep same tools as in the standard Atlas RNA-seq pipeline with ISL/IRAP including QC steps to flag problematic samples, with special atention to delete Fastqs and intermediate files after successful procesing.
 
-2. Because we need to process ~17300 libraries, the workflow should have constraint to enable batch processing of few libraries in parallel. 
+2. Because we need to process 17350 libraries, the workflow should have constraint to enable batch processing of few libraries in parallel. 
 
 3. Input data is in BAM format
 
@@ -27,8 +27,10 @@ The goal of this repo in to analyse bulk GTEx V8 bulk data (study id: `E-GTEX-8`
 
 [LSF profile](https://github.com/Snakemake-Profiles/lsf) configuration is necessary.
 
-For batch run once we have aggregate rule in place we can utilise following batch command to run few samples at a time
-`snakemake -s Snakefile --cores 2 --batch final_workflow_check=n/N` where `N` is the total number of chunks, and `n=1,2, ..N` . 
+For batching, we can utilise the following batch command to run few samples at a time
+`snakemake -s Snakefile --cores 2 --batch final_workflow_check=n/N` where `N` is the total number of chunks, and `n=1,2, ..N`. 
+
+For instace, if we run the workflow in `N=347` batches, 50 libraries will be processed in each batch.
 
 
 ## Test data
