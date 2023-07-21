@@ -56,7 +56,8 @@ def detect_read_type_first_sample(bam_file_name):
 
 
 rule all:
-    input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}/{sample}_prepare_aggregation.done"], sample=SAMPLES), "out/workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
+    input: "out/workflow.done"
+    #input: expand(["out/{sample}/{sample}.fastq.val", "out/{sample}/{sample}_prepare_aggregation.done"], sample=SAMPLES), "out/workflow.done", f"out/stage0_{FIRST_SAMPLE}.txt"
 
 
 rule check_bam:
@@ -65,13 +66,12 @@ rule check_bam:
     output:
         bam_check = temp("out/{sample}/{sample}_1.bam_checked")
     log: "logs/{sample}/{sample}_check_bam.log"
+    priority: 1
     conda:
         "envs/samtools.yml"
     threads: 4
     params:
         bai = config["input_path"]+ "/{sample}.Aligned.sortedByCoord.out.patched.md.bam.bai"
-    resources: 
-        load=5
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -110,10 +110,9 @@ rule bam_to_fastq:
     params: 
         read_type = detect_read_type
     log: "logs/{sample}/{sample}_bam_to_fastq.log"
+    priority: 2
     resources: 
-        mem_mb=get_mem_mb,
-        disk_mb=200000,
-        load=5
+        mem_mb=get_mem_mb
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -147,12 +146,11 @@ checkpoint validating_fastq:
     output:
         val_fastq = temp("out/{sample}/{sample}.fastq.val")
     log: "logs/{sample}/{sample}_validating_fastq.log"
+    priority: 3
     params:
         fastq = "out/{sample}/{sample}.fastq"
     conda:
         "envs/fastq_utils.yml"
-    resources: 
-        load=5
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -205,6 +203,7 @@ rule run_irap_stage0:
     output: f"out/stage0_{FIRST_SAMPLE}.txt"
     conda: "envs/isl.yaml"
     log: f"logs/irap_stage0_{FIRST_SAMPLE}.log"
+    priority: 4
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -215,8 +214,7 @@ rule run_irap_stage0:
         filename= f"{FIRST_SAMPLE}",
         read_type = detect_read_type_first_sample(FIRST_SAMPLE)
     resources:
-        mem_mb=16000,
-        load=10
+        mem_mb=16000
     threads: 16
     shell:
         """
@@ -294,6 +292,7 @@ rule run_irap:
     output: "out/{sample}/{sample}_irap_completed.done"
     conda: "envs/isl.yaml"
     log: "logs/{sample}/{sample}_irap.log"
+    priority: 4
     params:
         private_script=config["private_script"],
         conf=config["irap_config"],
@@ -304,8 +303,7 @@ rule run_irap:
         first_sample=f"{FIRST_SAMPLE}",
         read_type = detect_read_type
     resources: 
-        mem_mb=get_mem_mb,
-        load=10
+        mem_mb=get_mem_mb
     threads: 16
     shell:
         """
@@ -379,7 +377,6 @@ rule run_irap:
         """
 
 
-
 rule prepare_aggregation:
     """
     Prepare aggregation of irap outputs, which are at
@@ -393,8 +390,6 @@ rule prepare_aggregation:
     priority: 5
     params:
         private_script=config["private_script"]
-    resources: 
-        load=2
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -452,12 +447,9 @@ rule prepare_aggregation:
 #    """
 
 
-
 rule final_workflow_check:
     input: expand(["out/{sample}/{sample}_prepare_aggregation.done"], sample=SAMPLES)
     output: "out/workflow.done"
-    resources: 
-        load=1
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
