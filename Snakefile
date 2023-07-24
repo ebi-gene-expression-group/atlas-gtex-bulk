@@ -269,7 +269,7 @@ rule run_irap_stage0:
         else
             # fastq is PE
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-            reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            reformat.sh ow=t ibq=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib...PE mode"
