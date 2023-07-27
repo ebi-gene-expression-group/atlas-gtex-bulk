@@ -273,6 +273,7 @@ rule run_irap_stage0:
         fi
         echo "quality enconding in fastq: $qual_val"
         seqtk seq -q $mincalledquality -X $maxcalledquality -n N -C {params.root_dir}/{input.fastq} > {params.root_dir}/{input.fastq}_seqtk
+        gzip {params.root_dir}/{input.fastq}
 
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
@@ -288,6 +289,7 @@ rule run_irap_stage0:
             # fastq is PE
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
             reformat.sh tossjunk=t tossbrokenreads=t changequality=t quantize=t mincalledquality=2 maxcalledquality=41 qin=$qual_val qout=$qual_val ow=t ibq=f vint=t in={params.root_dir}/{input.fastq}_seqtk out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            gzip {params.root_dir}/{input.fastq}_seqtk
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib...PE mode"
@@ -296,6 +298,9 @@ rule run_irap_stage0:
             eval $cmd
             echo "stage0 finished"
         fi
+
+	gunzip {params.root_dir}/{input.fastq}.gz
+	gunzip {params.root_dir}/{input.fastq}_seqtk.gz
 
         popd
 
@@ -380,6 +385,7 @@ rule run_irap:
         fi
         echo "quality enconding in fastq: $qual_val"
         seqtk seq -q $mincalledquality -X $maxcalledquality -n N -C {params.root_dir}/{input.fastq} > {params.root_dir}/{input.fastq}_seqtk
+        gzip {params.root_dir}/{input.fastq}
 
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
@@ -394,6 +400,7 @@ rule run_irap:
         else
             # fastq is PE
             reformat.sh tossjunk=t tossbrokenreads=t changequality=t quantize=t mincalledquality=2 maxcalledquality=41 qin=$qual_val qout=$qual_val ow=t ibq=f vint=t in={params.root_dir}/{input.fastq}_seqtk out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            gzip {params.root_dir}/{input.fastq}_seqtk
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib..."
@@ -402,6 +409,9 @@ rule run_irap:
             eval $cmd
             echo "irap_single_lib PE finished for {wildcards.sample}"
         fi
+
+	gunzip {params.root_dir}/{input.fastq}.gz
+	gunzip {params.root_dir}/{input.fastq}_seqtk.gz
 
         popd
 
