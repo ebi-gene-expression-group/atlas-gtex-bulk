@@ -203,7 +203,7 @@ rule run_irap_stage0:
         check = f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fastq.val"
     output:
         completed = f"out/stage0_{FIRST_SAMPLE}.txt",
-        fastq_seqtk = temp(f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq_seqtk")
+        fastq_seqtk = temp(f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq_seqtk.gz")
     conda: "envs/isl.yaml"
     log: f"logs/irap_stage0_{FIRST_SAMPLE}.log"
     priority: 4
@@ -300,7 +300,6 @@ rule run_irap_stage0:
         fi
 
 	gunzip {params.root_dir}/{input.fastq}.gz
-	gunzip {params.root_dir}/{input.fastq}_seqtk.gz
 
         popd
 
@@ -314,7 +313,7 @@ rule run_irap:
         stage0_completed=rules.run_irap_stage0.output.completed
     output:
         completed = "out/{sample}/{sample}_irap_completed.done",
-        fastq_seqtk = temp("out/{sample}/{sample}.fq_seqtk")
+        fastq_seqtk = temp("out/{sample}/{sample}.fq_seqtk.gz")
     conda: "envs/isl.yaml"
     log: "logs/{sample}/{sample}_irap.log"
     priority: 4
@@ -411,7 +410,6 @@ rule run_irap:
         fi
 
 	gunzip {params.root_dir}/{input.fastq}.gz
-	gunzip {params.root_dir}/{input.fastq}_seqtk.gz
 
         popd
 
