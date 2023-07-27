@@ -18,7 +18,7 @@ def get_mem_mb(wildcards, attempt):
     attemps = reiterations + 1
     Max number attemps = 6
     """
-    mem_avail = [ 8, 16, 32, 64, 128, 300 ]  
+    mem_avail = [ 12, 16, 32, 64, 128, 300 ]  
     if attempt > len(mem_avail):
         print(f"Attemps {attempt} exceeds the maximum number of attemps: {len(mem_avail)}")
         print(f"modify value of --restart-times or adjust mem_avail resources accordingly")
@@ -112,7 +112,8 @@ rule bam_to_fastq:
     log: "logs/{sample}/{sample}_bam_to_fastq.log"
     priority: 2
     resources: 
-        mem_mb=get_mem_mb
+        mem_mb=get_mem_mb,
+        disk_mb=70000
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
@@ -200,7 +201,9 @@ rule run_irap_stage0:
     input:
         fastq= f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq",
         check = f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fastq.val"
-    output: f"out/stage0_{FIRST_SAMPLE}.txt"
+    output:
+        completed = f"out/stage0_{FIRST_SAMPLE}.txt",
+        fastq_seqtk = temp(f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq_seqtk")
     conda: "envs/isl.yaml"
     log: f"logs/irap_stage0_{FIRST_SAMPLE}.log"
     priority: 4
@@ -256,6 +259,21 @@ rule run_irap_stage0:
  
         pushd $workingDir > /dev/null
 	
+    	
+        # get quality enconding: 33 (sanger), 64 (illumina)
+        qual=$(testformat.sh {params.root_dir}/{input.fastq} | awk '{{print $1}}')
+        if [[ $qual == "sanger" ]]; then
+            qual_val="33"
+            maxcalledquality="93"
+            mincalledquality="0"
+        else
+            qual_val="64"
+            maxcalledquality="62"
+            mincalledquality="0"
+        fi
+        echo "quality enconding in fastq: $qual_val"
+        seqtk seq -q $mincalledquality -X $maxcalledquality -n N -C {params.root_dir}/{input.fastq} > {params.root_dir}/{input.fastq}_seqtk
+
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
             cp {params.root_dir}/{input.fastq} $workingDir/${{localFastqPath}}.fastq
@@ -269,7 +287,7 @@ rule run_irap_stage0:
         else
             # fastq is PE
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
-            reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            reformat.sh tossjunk=t tossbrokenreads=t changequality=t quantize=t mincalledquality=2 maxcalledquality=41 qin=$qual_val qout=$qual_val ow=t ibq=f vint=t in={params.root_dir}/{input.fastq}_seqtk out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib...PE mode"
@@ -281,15 +299,17 @@ rule run_irap_stage0:
 
         popd
 
-        touch {output}
+        touch {output.completed}
         """
 
 rule run_irap:
     input:
         fastq=rules.bam_to_fastq.output.fastq,
         check = rules.validating_fastq.output.val_fastq,
-        stage0_completed=rules.run_irap_stage0.output
-    output: "out/{sample}/{sample}_irap_completed.done"
+        stage0_completed=rules.run_irap_stage0.output.completed
+    output:
+        completed = "out/{sample}/{sample}_irap_completed.done",
+        fastq_seqtk = temp("out/{sample}/{sample}.fq_seqtk")
     conda: "envs/isl.yaml"
     log: "logs/{sample}/{sample}_irap.log"
     priority: 4
@@ -347,6 +367,19 @@ rule run_irap:
 
         pushd $workingDir > /dev/null
 	
+        # get quality enconding: 33 (sanger), 64 (illumina)
+        qual=$(testformat.sh {params.root_dir}/{input.fastq} | awk '{{print $1}}')
+        if [[ $qual == "sanger" ]]; then
+            qual_val="33"
+            maxcalledquality="93"
+            mincalledquality="0"
+        else
+            qual_val="64"
+            maxcalledquality="62"
+            mincalledquality="0"
+        fi
+        echo "quality enconding in fastq: $qual_val"
+        seqtk seq -q $mincalledquality -X $maxcalledquality -n N -C {params.root_dir}/{input.fastq} > {params.root_dir}/{input.fastq}_seqtk
 
         if [[ {params.read_type} == "se" ]]; then
             # fastq is SE
@@ -360,10 +393,10 @@ rule run_irap:
             echo "irap_single_lib SE finished for {wildcards.sample}"
         else
             # fastq is PE
-            reformat.sh ow=t int=t vpair=t vint=t in={params.root_dir}/{input.fastq} out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            reformat.sh tossjunk=t tossbrokenreads=t changequality=t quantize=t mincalledquality=2 maxcalledquality=41 qin=$qual_val qout=$qual_val ow=t ibq=f vint=t in={params.root_dir}/{input.fastq}_seqtk out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
+
             echo "Calling irap_single_lib..."
-	    
             cmd="irap_single_lib -A -f -o irap_single_lib -1 ${{localFastqPath}}_1.fastq -2 ${{localFastqPath}}_2.fastq -c {params.conf} -s {params.strand} -m $irapMem -t {threads} -C {params.irapDataOption}"
             echo "PE IRAP will run now:"
             eval $cmd
@@ -373,7 +406,7 @@ rule run_irap:
         popd
 
         # The files to collected by aggregation from irap are in $IRAP_SINGLE_LIB/out
-        touch {output}
+        touch {output.completed}
         """
 
 
@@ -439,13 +472,11 @@ rule prepare_aggregation:
         touch {output}
         """
 
-
 #rule aggregate_libraries:
 #    """
 #    Final rule to agregate all library outputs, and store them in a single folder
 #    $IRAP_SINGLE_LIB/studies/E-GTEX-8/homo_sapiens/
 #    """
-
 
 rule final_workflow_check:
     input: expand(["out/{sample}/{sample}_prepare_aggregation.done"], sample=SAMPLES)
