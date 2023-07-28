@@ -6,7 +6,6 @@ from snakemake.utils import min_version
 
 min_version("7.25.3")
 
-# here we need wildcard contraint based on input file name pattern or it picks up bam file from sub-dirs
 SAMPLES, = glob_wildcards(config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam")
 
 
@@ -18,7 +17,7 @@ def get_mem_mb(wildcards, attempt):
     attemps = reiterations + 1
     Max number attemps = 6
     """
-    mem_avail = [ 12, 16, 32, 64, 128, 300 ]  
+    mem_avail = [ 16, 24, 32, 64, 128, 300 ]  
     if attempt > len(mem_avail):
         print(f"Attemps {attempt} exceeds the maximum number of attemps: {len(mem_avail)}")
         print(f"modify value of --restart-times or adjust mem_avail resources accordingly")
@@ -102,13 +101,14 @@ rule bam_to_fastq:
         bam = config["input_path"]+"/{sample}.Aligned.sortedByCoord.out.patched.md.bam",
         check_bam = rules.check_bam.output.bam_check
     output:
-        fastq = temp("out/{sample}/{sample}.fq"),
+        fastq = temp("out/{sample}/{sample}.fq.gz"),
         sorted_bam= temp("out/{sample}/sorted_{sample}.bam")
     conda: 
         "envs/samtools.yml"
     threads: 8
     params: 
-        read_type = detect_read_type
+        read_type = detect_read_type,
+        uncompressed = "out/{sample}/{sample}.fq"
     log: "logs/{sample}/{sample}_bam_to_fastq.log"
     priority: 2
     resources: 
@@ -128,16 +128,18 @@ rule bam_to_fastq:
             #If the input contains read-pairs which are to be interleaved or written to separate 
             #files in the same order, then the input should be first collated by name. Use samtools 
             #collate or samtools sort -n to ensure this.
-            samtools fastq --threads {threads} -0 /dev/null -s /dev/null {output.sorted_bam} > {output.fastq}
+            samtools fastq --threads {threads} -0 /dev/null -s /dev/null {output.sorted_bam} > {params.uncompressed}
+            gzip {params.uncompressed}
         elif [[ {params.read_type} == "se" ]]; then
-            samtools fastq --threads {threads} {output.sorted_bam} > {output.fastq}
+            samtools fastq --threads {threads} {output.sorted_bam} > {params.uncompressed}
+            gzip {params.uncompressed}
         else
             echo "ERROR: read type not detected"
             exit 1
         fi
         """
 
-	
+
 checkpoint validating_fastq:
     """
     Here if else statement could be modified to run iRAP/ISL for PE and SE data.
@@ -149,7 +151,7 @@ checkpoint validating_fastq:
     log: "logs/{sample}/{sample}_validating_fastq.log"
     priority: 3
     params:
-        fastq = "out/{sample}/{sample}.fastq"
+        fastq = "out/{sample}/{sample}.fastq.gz"
     conda:
         "envs/fastq_utils.yml"
     shell:
@@ -167,12 +169,6 @@ checkpoint validating_fastq:
         touch {output.val_fastq}
         """
 
-#def aggregate_fastq(wildcards):
-#    checkpoint_output = checkpoints.validating_fastq.get(**wildcards).output[0]
-#    print(checkoint_output)
-#    return expand("out/{sample}/{fq}_fastqc.html",
-#        sample=wildcards.sample,
-#        fq=glob_wildcards(os.path.join(checkpoint_output, "{fq}.fastq.gz")).fq)
 
 rule fastqc:
     """
@@ -199,11 +195,10 @@ rule run_irap_stage0:
     This ensures Irap stage0 is run only once, for the first sample
     """
     input:
-        fastq= f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq",
+        fastq = f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq.gz",
         check = f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fastq.val"
     output:
-        completed = f"out/stage0_{FIRST_SAMPLE}.txt",
-        fastq_seqtk = temp(f"out/{FIRST_SAMPLE}/{FIRST_SAMPLE}.fq_seqtk")
+        completed = f"out/stage0_{FIRST_SAMPLE}.txt"
     conda: "envs/isl.yaml"
     log: f"logs/irap_stage0_{FIRST_SAMPLE}.log"
     priority: 4
@@ -272,6 +267,7 @@ rule run_irap_stage0:
             mincalledquality="0"
         fi
         echo "quality enconding in fastq: $qual_val"
+        rm -f {params.root_dir}/{input.fastq}_seqtk
         seqtk seq -q $mincalledquality -X $maxcalledquality -n N -C {params.root_dir}/{input.fastq} > {params.root_dir}/{input.fastq}_seqtk
 
         if [[ {params.read_type} == "se" ]]; then
@@ -288,6 +284,7 @@ rule run_irap_stage0:
             # fastq is PE
             #split_fastq {input.fastq} $workingDir ${{localFastqPath}}
             reformat.sh tossjunk=t tossbrokenreads=t changequality=t quantize=t mincalledquality=2 maxcalledquality=41 qin=$qual_val qout=$qual_val ow=t ibq=f vint=t in={params.root_dir}/{input.fastq}_seqtk out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            rm -f {params.root_dir}/{input.fastq}_seqtk
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib...PE mode"
@@ -308,8 +305,7 @@ rule run_irap:
         check = rules.validating_fastq.output.val_fastq,
         stage0_completed=rules.run_irap_stage0.output.completed
     output:
-        completed = "out/{sample}/{sample}_irap_completed.done",
-        fastq_seqtk = temp("out/{sample}/{sample}.fq_seqtk")
+        completed = "out/{sample}/{sample}_irap_completed.done"
     conda: "envs/isl.yaml"
     log: "logs/{sample}/{sample}_irap.log"
     priority: 4
@@ -379,6 +375,7 @@ rule run_irap:
             mincalledquality="0"
         fi
         echo "quality enconding in fastq: $qual_val"
+        rm -f {params.root_dir}/{input.fastq}_seqtk
         seqtk seq -q $mincalledquality -X $maxcalledquality -n N -C {params.root_dir}/{input.fastq} > {params.root_dir}/{input.fastq}_seqtk
 
         if [[ {params.read_type} == "se" ]]; then
@@ -394,6 +391,7 @@ rule run_irap:
         else
             # fastq is PE
             reformat.sh tossjunk=t tossbrokenreads=t changequality=t quantize=t mincalledquality=2 maxcalledquality=41 qin=$qual_val qout=$qual_val ow=t ibq=f vint=t in={params.root_dir}/{input.fastq}_seqtk out1=$workingDir/${{localFastqPath}}_1.fastq out2=$workingDir/${{localFastqPath}}_2.fastq
+            rm -f {params.root_dir}/{input.fastq}_seqtk
             java -jar {params.root_dir}/scripts/validatefastq-assembly-0.1.1.jar --fastq1 $workingDir/${{localFastqPath}}_1.fastq --fastq2 $workingDir/${{localFastqPath}}_2.fastq
 
             echo "Calling irap_single_lib..."
