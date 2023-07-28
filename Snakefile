@@ -154,6 +154,8 @@ checkpoint validating_fastq:
         fastq = "out/{sample}/{sample}.fastq.gz"
     conda:
         "envs/fastq_utils.yml"
+    resources: 
+        mem_mb=get_mem_mb
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
