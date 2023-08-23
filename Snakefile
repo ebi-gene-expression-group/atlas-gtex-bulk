@@ -322,7 +322,7 @@ rule run_irap:
         read_type = detect_read_type
     resources: 
         mem_mb=get_mem_mb
-    threads: 16
+    threads: 24
     shell:
         """
         set -e # snakemake on the cluster doesn't stop on error when --keep-going is set
