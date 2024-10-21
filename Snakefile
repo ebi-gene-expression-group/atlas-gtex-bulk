@@ -17,7 +17,7 @@ def get_mem_mb(wildcards, attempt):
     attemps = reiterations + 1
     Max number attemps = 6
     """
-    mem_avail = [ 16, 32, 48, 64, 128, 300 ]  
+    mem_avail = [ 32, 56, 64, 128, 256, 300 ]  
     if attempt > len(mem_avail):
         print(f"Attemps {attempt} exceeds the maximum number of attemps: {len(mem_avail)}")
         print(f"modify value of --restart-times or adjust mem_avail resources accordingly")
