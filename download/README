@@ -1,0 +1,33 @@
+# Files downloaded from GTEx without egress fees, per instructions at https://anvilproject.org/learn/reference/gtex-v8-free-egress-instructions
+
+Only specific subsets of the data have been downloaded thus far (namely the unaligned reads). Further downloads (aligned reads, splice junctions etc) can be obtained by re-running the download script, having obtained a manifest file using the instructions at the link above. 
+
+## Files
+.
+├── bin
+│   ├── download.sh                                                     = Convenience script for structuring downloads and keeping this dir tidy for others
+│   ├── check_md5sums.sh                                                = Check the md5sums from the manifest against the downloaded files 
+│   └── gen3-client                                                     = gen3 client binary- see https://gen3.org/resources/user/gen3-client/
+├── data
+│   ├── phenotypic_tsvs_controlled                                      = Phenotypic tsvs derived using first part of egress instructions linked above. Cannot be made public, obviously.
+│   │   ├── program.tsv
+│   │   ├── project.tsv
+│   │   ├── sample.tsv
+│   │   ├── sequencing.tsv
+│   │   └── subject.tsv
+│   ├── phenotypic_tsvs_public                                          = Publicly usable metadata from https://gtexportal.org/home/datasets
+│   │   ├── GTEx_Analysis_v8_Annotations_SampleAttributesDD.xlsx
+│   │   ├── GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt
+│   │   ├── GTEx_Analysis_v8_Annotations_SubjectPhenotypesDD.xlsx
+│   │   ├── GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt
+│   │   └── subject_sample_sequencing.tsv
+│   ├── rnaseq_aligned_reads                                            = All files downloaded using the rnaseq_aligned_reads manifest below
+│   └── unaligned
+│       └── fq                                                          = Unaligned bams converted to fastq files for analysis
+├── manifests                                                           = Manifests for object download, generated using egress instructions above
+│   ├── all.json                                                        = Manifest for all objects- didn't end up using this, so as not to use excess storage
+│   ├── export_2020-12-02T10_29_49.avro                                 = PFB export used to download phenotypic data with PyPFB
+│   ├── unaligned.json                                                  = Object manifest for unaligned bams only
+│   └── rnaseq_aligned_reads.json                                       = Manifest for RNA-seq, BAM and BAI (aligned reads) 
+├── analysis                                                            = Analysis DIR. Please do analytical work here rather than making the data dir messy. 
+│   ├── jmanning                                                        = My analysis dir! Please make your own. 
