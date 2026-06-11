@@ -11,7 +11,7 @@ source ${scriptDir}/../isl/lib/functions.sh
 
 studyId=$1
 organism="homo_sapiens"
-lsfMem=${2:-4096}
+slurmMem=${2:-4096}
 
 check_variables 'studyId'
 
@@ -89,10 +89,10 @@ echo $libraryPathsForStudy > $aux
 # Submit aggregation to cluster
 
 aggrCmd="irap_single_lib2report_atlas -B -j 4 folders_file=$aux out=$ISL_WORKING_DIR/studies/$studyId/$organism name=$studyId"
-isl_lsf_submit 'aggregate' ${studyId}.${organism} "/irap_gtex" $lsfMem 1 $ISL_WORKING_DIR "$aggrCmd"
+isl_slurm_submit 'aggregate' ${studyId}.${organism} "/irap_gtex" $slurmMem 1 $ISL_WORKING_DIR "$aggrCmd"
 
 if [ $? -ne 0 ]; then
-    echo  "[ERROR] Failed to submit to lsf job: '$aggrCmd'" 
+    echo  "[ERROR] Failed to submit to Slurm job: '$aggrCmd'" 
     exit 1
 else
     echo "Submitted aggregation for ${studyId} ${organism}"
@@ -100,14 +100,14 @@ else
     # Monitor aggregation job
     monitorLogPrefix=$(get_log_prefix processing 'aggregate' ${studyId}.${organism})
     monitorLog="${monitorLogPrefix}.log"
-    isl_lsf_monitor 'aggregate' 1 $monitorLog
+    isl_slurm_monitor 'aggregate' 1 $monitorLog
 
     # Once done, move to the fg_atlas ISL studies dir.
     if [ $? -ne 0 ]; then
-        echo "LSF processing completed with errors"
+        echo "SLURM processing completed with errors"
         exit 1
     else
-        echo "LSF processing completed, no errors"
+        echo "SLURM processing completed, no errors"
 
         # Move results to results directory
         resultsDir=$(process_results_dir $studyId aggregate $organism 'no')
