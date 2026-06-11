@@ -1,16 +1,13 @@
 nextflow.enable.dsl=2
 
-/*
-Input:
-  bams_manifest.csv with columns:
-    sample,bam,strandedness
-
-Output:
-  fastq_batches/batch_000001/*.fastq.gz
-  samplesheets/samplesheet_batch_000001.csv
-*/
+params.manifest     = params.manifest     ?: "bams_manifest.csv"
+params.batch_size   = params.batch_size   ?: 100
+params.fastq_outdir = params.fastq_outdir ?: "fastq_batches"
+params.samplesheets = params.samplesheets ?: "samplesheets"
 
 workflow {
+
+    def fastq_outdir_abs = file(params.fastq_outdir).toAbsolutePath().toString()
 
     Channel
         .fromPath(params.manifest)
@@ -29,7 +26,6 @@ workflow {
 
     /*
      Assign batch IDs: batch_000001, batch_000002, ...
-     This batches every params.batch_size samples.
     */
     bam_ch
         .toSortedList { a, b -> a[0] <=> b[0] }
@@ -37,7 +33,14 @@ workflow {
             rows.withIndex().collect { item, idx ->
                 def batch_num = Math.floor(idx / params.batch_size) + 1
                 def batch_id = String.format("batch_%06d", batch_num as int)
-                tuple(batch_id, item[0], item[1], item[2])
+
+                tuple(
+                    batch_id,
+                    item[0],             // sample
+                    item[1],             // bam
+                    item[2],             // strandedness
+                    fastq_outdir_abs     // final FASTQ output root
+                )
             }
         }
         .set { batched_bams_ch }
@@ -48,17 +51,20 @@ workflow {
     BAM_TO_FASTQ(batched_bams_ch)
 
     /*
-     Group 100 converted samples per batch.
+     Drop the physical path objects before making samplesheet.
+     We keep only the final published FASTQ paths.
     */
     BAM_TO_FASTQ.out
+        .map { batch_id, sample, r1_final, r2_final, strandedness, r1_file, r2_file ->
+            tuple(batch_id, sample, r1_final, r2_final, strandedness)
+        }
         .groupTuple(by: 0)
         .set { grouped_fastqs_ch }
 
     /*
-     Make one samplesheet per batch.
+     Make one nf-core/rnaseq samplesheet per batch.
     */
     MAKE_SAMPLESHEET(grouped_fastqs_ch)
-    
 }
 
 
@@ -66,13 +72,21 @@ process BAM_TO_FASTQ {
 
     tag "${batch_id}:${sample}"
 
-    publishDir "${params.fastq_outdir}/${batch_id}", mode: 'copy'
+    publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
 
     input:
-    tuple val(batch_id), val(sample), path(bam), val(strandedness)
+    tuple val(batch_id), val(sample), path(bam), val(strandedness), val(fastq_outdir)
 
     output:
-    tuple val(batch_id), val(sample), path("${sample}_R1.fastq.gz"), path("${sample}_R2.fastq.gz"), val(strandedness)
+    tuple(
+        val(batch_id),
+        val(sample),
+        val("${fastq_outdir}/${batch_id}/${sample}_R1.fastq.gz"),
+        val("${fastq_outdir}/${batch_id}/${sample}_R2.fastq.gz"),
+        val(strandedness),
+        path("${sample}_R1.fastq.gz"),
+        path("${sample}_R2.fastq.gz")
+    )
 
     script:
     """
@@ -83,15 +97,17 @@ process BAM_TO_FASTQ {
 
     echo "Converting BAM to FASTQ for sample: ${sample}"
 
-    # Important:
-    # samtools collate groups read pairs without doing a full coordinate/name sort.
-    # samtools fastq then writes paired reads to R1/R2.
+    # Exclude secondary and supplementary alignments:
+    # 0x100 = secondary
+    # 0x800 = supplementary
+    # 0x900 = both
     samtools collate \\
         -@ ${task.cpus} \\
         -u \\
         -O ${bam} \\
     | samtools fastq \\
         -@ ${task.cpus} \\
+        -F 0x900 \\
         -1 ${sample}_R1.fastq.gz \\
         -2 ${sample}_R2.fastq.gz \\
         -0 /dev/null \\
@@ -103,6 +119,7 @@ process BAM_TO_FASTQ {
     gzip -t ${sample}_R2.fastq.gz
 
     echo "Counting FASTQ records"
+
     R1_LINES=\$(zcat ${sample}_R1.fastq.gz | wc -l)
     R2_LINES=\$(zcat ${sample}_R2.fastq.gz | wc -l)
 
@@ -139,18 +156,19 @@ process MAKE_SAMPLESHEET {
     publishDir "${params.samplesheets}", mode: 'copy'
 
     input:
-    tuple val(batch_id), val(samples), path(r1s), path(r2s), val(strandednesses)
+    tuple val(batch_id), val(samples), val(r1_finals), val(r2_finals), val(strandednesses)
 
     output:
-    tuple val(batch_id), path("samplesheet_${batch_id}.csv")
+    path("samplesheet_${batch_id}.csv")
 
     script:
     def rows = []
+
     for (int i = 0; i < samples.size(); i++) {
         rows << [
             samples[i],
-            r1s[i],
-            r2s[i],
+            r1_finals[i],
+            r2_finals[i],
             strandednesses[i]
         ]
     }
