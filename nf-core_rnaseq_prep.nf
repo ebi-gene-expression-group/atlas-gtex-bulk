@@ -63,7 +63,14 @@ workflow {
     BAM_TO_FASTQ_SE(readtype_ch.se)
     
     BAM_TO_FASTQ_PE.out
-        .mix(BAM_TO_FASTQ_SE.out)
+        .map { batch_id, sample, fastq_1, fastq_2, strandedness, read_type, r1_file, r2_file ->
+            tuple(batch_id, sample, fastq_1, fastq_2, strandedness, read_type)
+        }
+        .mix(
+            BAM_TO_FASTQ_SE.out.map { batch_id, sample, fastq_1, fastq_2, strandedness, read_type, fastq_file ->
+                tuple(batch_id, sample, fastq_1, fastq_2, strandedness, read_type)
+            }
+        )
         .groupTuple(by: 0)
         .set { grouped_fastqs_ch }
     
@@ -73,6 +80,7 @@ workflow {
 process DETECT_READ_TYPE {
 
     tag "${sample}"
+    conda "envs/samtools.yml"
 
     input:
     tuple val(sample), path(bam), val(strandedness)
@@ -89,8 +97,9 @@ process DETECT_READ_TYPE {
 
     echo "Detecting read type for ${sample}"
 
-    # SAM flag 0x1 means paired-end.
-    if samtools view -f 1 ${bam} | head -n 1 | grep -q .; then
+    # Count primary reads carrying the paired-end flag without using a pipe,
+    # which can misclassify PE BAMs under `set -o pipefail`.
+    if [ "\$(samtools view -c -f 1 -F 0x900 ${bam})" -gt 0 ]; then
         echo "pe" > read_type.txt
     else
         echo "se" > read_type.txt
@@ -106,6 +115,7 @@ process DETECT_READ_TYPE {
 process BAM_TO_FASTQ_PE {
 
     tag "${batch_id}:${sample}:PE"
+    conda "envs/samtools.yml"
 
     publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
 
@@ -148,8 +158,8 @@ process BAM_TO_FASTQ_PE {
     gzip -t ${sample}_R1.fastq.gz
     gzip -t ${sample}_R2.fastq.gz
 
-    R1_LINES=\$(zcat ${sample}_R1.fastq.gz | wc -l)
-    R2_LINES=\$(zcat ${sample}_R2.fastq.gz | wc -l)
+    R1_LINES=\$(gzip -cd ${sample}_R1.fastq.gz | wc -l)
+    R2_LINES=\$(gzip -cd ${sample}_R2.fastq.gz | wc -l)
 
     if [ \$((R1_LINES % 4)) -ne 0 ]; then
         echo "ERROR: R1 FASTQ line count is not divisible by 4"
@@ -178,6 +188,7 @@ process BAM_TO_FASTQ_PE {
 process BAM_TO_FASTQ_SE {
 
     tag "${batch_id}:${sample}:SE"
+    conda "envs/samtools.yml"
 
     publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
 
@@ -212,7 +223,7 @@ process BAM_TO_FASTQ_SE {
 
     gzip -t ${sample}.fastq.gz
 
-    SE_LINES=\$(zcat ${sample}.fastq.gz | wc -l)
+    SE_LINES=\$(gzip -cd ${sample}.fastq.gz | wc -l)
 
     if [ \$((SE_LINES % 4)) -ne 0 ]; then
         echo "ERROR: SE FASTQ line count is not divisible by 4"
@@ -233,7 +244,7 @@ process MAKE_SAMPLESHEET {
     publishDir "${params.samplesheets}", mode: 'copy'
 
     input:
-    tuple val(batch_id), val(samples), val(fastq_1s), val(fastq_2s), val(strandednesses), val(read_types), path(extra_files)
+    tuple val(batch_id), val(samples), val(fastq_1s), val(fastq_2s), val(strandednesses), val(read_types)
 
     output:
     path("samplesheet_${batch_id}.csv")
