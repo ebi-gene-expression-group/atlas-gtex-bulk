@@ -25,57 +25,92 @@ workflow {
         .set { bam_ch }
 
     /*
-     Assign batch IDs: batch_000001, batch_000002, ...
+     Detect PE/SE per BAM.
     */
-    bam_ch
+    DETECT_READ_TYPE(bam_ch)
+
+    DETECT_READ_TYPE.out
+        .map { sample, bam, strandedness, read_type_file ->
+            def read_type = read_type_file.text.trim()
+            tuple(sample, bam, strandedness, read_type)
+        }
         .toSortedList { a, b -> a[0] <=> b[0] }
         .flatMap { rows ->
             rows.withIndex().collect { item, idx ->
                 def batch_num = Math.floor(idx / params.batch_size) + 1
                 def batch_id = String.format("batch_%06d", batch_num as int)
-
+    
                 tuple(
                     batch_id,
                     item[0],             // sample
                     item[1],             // bam
                     item[2],             // strandedness
-                    fastq_outdir_abs     // final FASTQ output root
+                    item[3],             // read_type
+                    fastq_outdir_abs
                 )
             }
         }
         .set { batched_bams_ch }
-
-    /*
-     Convert each BAM to paired FASTQ.
-    */
-    BAM_TO_FASTQ(batched_bams_ch)
-
-    /*
-     Drop the physical path objects before making samplesheet.
-     We keep only the final published FASTQ paths.
-    */
-    BAM_TO_FASTQ.out
-        .map { batch_id, sample, r1_final, r2_final, strandedness, r1_file, r2_file ->
-            tuple(batch_id, sample, r1_final, r2_final, strandedness)
+    
+    batched_bams_ch
+        .branch {
+            pe: it[4] == "pe"
+            se: it[4] == "se"
         }
+        .set { readtype_ch }
+    
+    BAM_TO_FASTQ_PE(readtype_ch.pe)
+    BAM_TO_FASTQ_SE(readtype_ch.se)
+    
+    BAM_TO_FASTQ_PE.out
+        .mix(BAM_TO_FASTQ_SE.out)
         .groupTuple(by: 0)
         .set { grouped_fastqs_ch }
-
-    /*
-     Make one nf-core/rnaseq samplesheet per batch.
-    */
+    
     MAKE_SAMPLESHEET(grouped_fastqs_ch)
 }
 
+process DETECT_READ_TYPE {
 
-process BAM_TO_FASTQ {
+    tag "${sample}"
 
-    tag "${batch_id}:${sample}"
+    input:
+    tuple val(sample), path(bam), val(strandedness)
+
+    output:
+    tuple val(sample), path(bam), val(strandedness), path("read_type.txt")
+
+    script:
+    """
+    set -euo pipefail
+
+    echo "Checking BAM integrity: ${bam}"
+    samtools quickcheck -v ${bam}
+
+    echo "Detecting read type for ${sample}"
+
+    # SAM flag 0x1 means paired-end.
+    if samtools view -f 1 ${bam} | head -n 1 | grep -q .; then
+        echo "pe" > read_type.txt
+    else
+        echo "se" > read_type.txt
+    fi
+
+    echo "Detected read type for ${sample}: \$(cat read_type.txt)"
+    """
+}
+
+
+
+
+process BAM_TO_FASTQ_PE {
+
+    tag "${batch_id}:${sample}:PE"
 
     publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
 
     input:
-    tuple val(batch_id), val(sample), path(bam), val(strandedness), val(fastq_outdir)
+    tuple val(batch_id), val(sample), path(bam), val(strandedness), val(read_type), val(fastq_outdir)
 
     output:
     tuple(
@@ -84,6 +119,7 @@ process BAM_TO_FASTQ {
         val("${fastq_outdir}/${batch_id}/${sample}_R1.fastq.gz"),
         val("${fastq_outdir}/${batch_id}/${sample}_R2.fastq.gz"),
         val(strandedness),
+        val("pe"),
         path("${sample}_R1.fastq.gz"),
         path("${sample}_R2.fastq.gz")
     )
@@ -92,15 +128,10 @@ process BAM_TO_FASTQ {
     """
     set -euo pipefail
 
-    echo "Checking BAM: ${bam}"
+    echo "Converting paired-end BAM to FASTQ: ${sample}"
+
     samtools quickcheck -v ${bam}
 
-    echo "Converting BAM to FASTQ for sample: ${sample}"
-
-    # Exclude secondary and supplementary alignments:
-    # 0x100 = secondary
-    # 0x800 = supplementary
-    # 0x900 = both
     samtools collate \\
         -@ ${task.cpus} \\
         -u \\
@@ -114,11 +145,8 @@ process BAM_TO_FASTQ {
         -s /dev/null \\
         -n -
 
-    echo "Validating FASTQ gzip integrity"
     gzip -t ${sample}_R1.fastq.gz
     gzip -t ${sample}_R2.fastq.gz
-
-    echo "Counting FASTQ records"
 
     R1_LINES=\$(zcat ${sample}_R1.fastq.gz | wc -l)
     R2_LINES=\$(zcat ${sample}_R2.fastq.gz | wc -l)
@@ -137,17 +165,66 @@ process BAM_TO_FASTQ {
     R2_READS=\$((R2_LINES / 4))
 
     if [ "\$R1_READS" -ne "\$R2_READS" ]; then
-        echo "ERROR: R1 and R2 read counts differ"
+        echo "ERROR: PE read counts differ for ${sample}"
         echo "R1 reads: \$R1_READS"
         echo "R2 reads: \$R2_READS"
         exit 1
     fi
 
-    echo "FASTQ validation passed for ${sample}"
-    echo "Reads: \$R1_READS"
+    echo "PE FASTQ validation passed for ${sample}"
     """
 }
 
+process BAM_TO_FASTQ_SE {
+
+    tag "${batch_id}:${sample}:SE"
+
+    publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
+
+    input:
+    tuple val(batch_id), val(sample), path(bam), val(strandedness), val(read_type), val(fastq_outdir)
+
+    output:
+    tuple(
+        val(batch_id),
+        val(sample),
+        val("${fastq_outdir}/${batch_id}/${sample}.fastq.gz"),
+        val(""),
+        val(strandedness),
+        val("se"),
+        path("${sample}.fastq.gz")
+    )
+
+    script:
+    """
+    set -euo pipefail
+
+    echo "Converting single-end BAM to FASTQ: ${sample}"
+
+    samtools quickcheck -v ${bam}
+
+    samtools fastq \\
+        -@ ${task.cpus} \\
+        -F 0x900 \\
+        -n \\
+        -o ${sample}.fastq.gz \\
+        ${bam}
+
+    gzip -t ${sample}.fastq.gz
+
+    SE_LINES=\$(zcat ${sample}.fastq.gz | wc -l)
+
+    if [ \$((SE_LINES % 4)) -ne 0 ]; then
+        echo "ERROR: SE FASTQ line count is not divisible by 4"
+        exit 1
+    fi
+
+    SE_READS=\$((SE_LINES / 4))
+
+    echo "SE FASTQ validation passed for ${sample}"
+    echo "Reads: \$SE_READS"
+    """
+}
 
 process MAKE_SAMPLESHEET {
 
@@ -156,7 +233,7 @@ process MAKE_SAMPLESHEET {
     publishDir "${params.samplesheets}", mode: 'copy'
 
     input:
-    tuple val(batch_id), val(samples), val(r1_finals), val(r2_finals), val(strandednesses)
+    tuple val(batch_id), val(samples), val(fastq_1s), val(fastq_2s), val(strandednesses), val(read_types), path(extra_files)
 
     output:
     path("samplesheet_${batch_id}.csv")
@@ -167,8 +244,8 @@ process MAKE_SAMPLESHEET {
     for (int i = 0; i < samples.size(); i++) {
         rows << [
             samples[i],
-            r1_finals[i],
-            r2_finals[i],
+            fastq_1s[i],
+            fastq_2s[i],
             strandednesses[i]
         ]
     }
