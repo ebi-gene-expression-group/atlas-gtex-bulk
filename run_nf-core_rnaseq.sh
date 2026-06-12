@@ -28,7 +28,7 @@ convert_one_bam() {
     local batch_fastq_dir="$3"
     local threads="$4"
     
-    echo "  Converting ${sample}..."
+    echo "    [$(date '+%Y-%m-%d %H:%M:%S')] Converting ${sample}..."
     singularity exec ${SAMTOOLS_IMAGE} samtools collate \
         -@ ${threads} \
         -u \
@@ -53,7 +53,7 @@ convert_batch_to_fastq() {
     
     mkdir -p "${batch_fastq_dir}"
     
-    echo "Converting BAMs to FASTQ for ${batch_id} (${MAX_PARALLEL} parallel jobs, ${threads} threads each)..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Converting BAMs to FASTQ for ${batch_id} (${MAX_PARALLEL} parallel jobs, ${threads} threads each)..."
     
     local pids=()
     local failed=0
@@ -74,11 +74,11 @@ convert_batch_to_fastq() {
     local wait_status=$?
     
     if [ ${wait_status} -ne 0 ]; then
-        echo "ERROR: FASTQ conversion failed for ${batch_id}"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}"
         return 1
     fi
     
-    echo "FASTQ conversion complete for ${batch_id}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQ conversion complete for ${batch_id}"
     return 0
 }
 
@@ -124,11 +124,11 @@ for batch_info in batch_info/batch_*.csv; do
     batch_done_marker="results/${batch_id}/.done"
     
     echo "=========================================="
-    echo "Processing ${batch_id}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Processing ${batch_id}"
     echo "=========================================="
     
     if [ -f "${batch_done_marker}" ]; then
-        echo "Batch ${batch_id} already completed (marker found); skipping."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Batch ${batch_id} already completed (marker found); skipping."
         continue
     fi
     
@@ -136,20 +136,22 @@ for batch_info in batch_info/batch_*.csv; do
     samplesheet="${batch_fastq_dir}/samplesheet.csv"
 
     if [ -s "${samplesheet}" ]; then
-        echo "Samplesheet already exists for ${batch_id}; skipping FASTQ conversion."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet already exists for ${batch_id}; skipping FASTQ conversion."
     else
         if batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
-            echo "All FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] All FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
         else
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting FASTQ conversion for ${batch_id}..."
             convert_batch_to_fastq "${batch_info}" || {
-                echo "ERROR: FASTQ conversion failed for ${batch_id}; skipping this batch."
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}; skipping this batch."
                 continue
             }
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQ conversion completed for ${batch_id}."
         fi
         create_samplesheet "${batch_info}"
     fi
     
-    echo "Running nf-core/rnaseq for ${batch_id}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting nf-core/rnaseq for ${batch_id}"
 
     RIBO_INDEX=$(grep -oP '"ribo_database_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
     RIBO_MANIFEST=$(grep -oP '"ribo_database_manifest"\s*:\s*"\K[^"]+' "conf/params.json" || true)
@@ -190,16 +192,16 @@ for batch_info in batch_info/batch_*.csv; do
         -name "nf_core_gtex_rnaseq_${batch_id}"
 
     if [ $? -eq 0 ]; then
-        echo "nf-core/rnaseq completed successfully for ${batch_id}"
-        echo "Cleaning up FASTQ files and work directory..."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core/rnaseq completed successfully for ${batch_id}"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaning up FASTQ files and work directory..."
         rm -rf "${batch_fastq_dir}" "work_nfcore/${batch_id}" ".nextflow/history" || true
         mkdir -p "results/${batch_id}"
         touch "${batch_done_marker}"
-        echo "Cleanup complete for ${batch_id}; marked batch as complete."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleanup complete for ${batch_id}; marked batch as complete."
     else
-        echo "ERROR: nf-core/rnaseq failed for ${batch_id}; preserving FASTQ and work files for debugging."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core/rnaseq failed for ${batch_id}; preserving FASTQ and work files for debugging."
     fi
 
 done
 
-echo "All batches finished."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] All batches finished."
