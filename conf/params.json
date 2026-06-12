@@ -1,4 +1,5 @@
 {
+  "igenomes_ignore": true,
   "gtf": "${BULK_REFERENCES_DIR}/${SPECIES_lower}/Ensembl/${ASSEMBLY}/Annotation/Genes/${SPECIES}.${ASSEMBLY}.${RELEASE}.gtf",
   "fasta": "${BULK_REFERENCES_DIR}/${SPECIES_lower}/Ensembl/${ASSEMBLY}/Sequence/WholeGenomeFasta/${SPECIES}.${ASSEMBLY}.dna.toplevel.fa",
   "star_index": "${BULK_REFERENCES_DIR}/${SPECIES_lower}/Ensembl/${ASSEMBLY}/Sequence/STARIndex/Ensembl_${RELEASE}/2.7.11b",

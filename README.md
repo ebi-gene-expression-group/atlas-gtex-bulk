@@ -10,38 +10,95 @@ Controlled access (CA) data in Atlas can be processed depending on the datasets 
   - An alternative path for ingesting data to SCXA would be via annData with our [atlas-anndata](https://github.com/ebi-gene-expression-group/atlas-anndata) tool. For instance, metadata has been extracted from annData in the GTEx portal under accession `E-ANND-2`.
 
 ## GTEx analysis
-The goal of this repo in to analyse bulk GTEx V8 data (study id: `E-GTEX-8`) with a Snakemake workflow to uncompress the bams and analyse them on the fly. This can be done only by authorised users. 
+This repository currently uses a two-stage Nextflow + SLURM workflow for controlled-access GTEx bulk BAM data.
 
-1. We want to keep same tools as in the standard Atlas RNA-seq pipeline with ISL/IRAP including QC steps to flag problematic samples, with special atention to delete Fastqs and intermediate files after successful procesing.
+### Current workflow
+1. Prepare batch metadata from BAM manifest (`nf-core_rnaseq_prep.nf`):
+  - Reads `bams_manifest.csv`
+  - Detects read type per BAM
+  - Writes batch files in `batch_info/` as `batch_XXXXXX_info.csv`
+2. Run per-batch conversion + nf-core/rnaseq (`run_nf-core_rnaseq.sh` submitted via `sbatch`):
+  - Converts BAM to FASTQ per batch (parallelized within the batch)
+  - Builds batch samplesheet
+  - Runs `rnaseq/main.nf`
+  - Cleans FASTQ + batch work directory on success
+  - Writes completion marker `results/<batch_id>/.done`
 
-2. Because we need to process 17350 libraries, the workflow should have constraint to enable batch processing of few `n` libraries in parallel. 
+### Batch prep step
+Default batch size is 100 BAMs (configured in `nextflow.config`).
 
-3. Input data is in BAM format
+Run batch preparation:
 
-4. Output for each library should be similar to `$IRAP_SINGLE_LIB/out`.
+```bash
+nextflow run nf-core_rnaseq_prep.nf -profile singularity -resume
+```
 
-5. Once all libraries have been processed successfully, a final aggregation rule should write final results for E-GTEX-8 in a format similar to studies here `$IRAP_SINGLE_LIB/studies`.
+Override batch size when needed:
 
-### Example
+```bash
+nextflow run nf-core_rnaseq_prep.nf -profile singularity --batch_size 50 -resume
+```
 
-#### LSF
-`snakemake -p --use-conda --conda-frontend conda --profile lsf-profile --prioritize prepare_aggregation --keep-going --cores 4 --restart-times 5 --latency-wait 150 --config input_path=test-data atlas_gtex_root=/repo_directory_path/ private_script=gitlab_dir irap_config=homo_sapiens.conf`
+### Per-batch processing step
+Submit the SLURM wrapper job:
 
-For batching, we can utilise the following batch command to run few samples at a time
-`snakemake -s Snakefile --cores 2 --batch final_workflow_check=n/N` where `N` is the total number of chunks, and `n=1,2, ..N`. 
+Environment setup example (HPC):
 
-For instace, if we run the workflow in `N=347` batches, 50 libraries will be processed in each batch.
+  module load nextflow
+  export SAMTOOLS_IMAGE=/path/to/samtools.sif
+  export TOWER_ACCESS_TOKEN=your_tower_token
+  export TOWER_WORKSPACE_ID=your_tower_workspace_id
 
-#### SLURM
-`snakemake --slurm -p --use-conda --conda-frontend conda --profile slurm-profile ...` 
+```bash
+SAMTOOLS_IMAGE=/path/to/samtools.sif sbatch run_nf-core_rnaseq.sh
+```
 
+Notes:
+- SAMTOOLS_IMAGE is required by run_nf-core_rnaseq.sh for BAM to FASTQ conversion.
+- TOWER_ACCESS_TOKEN and TOWER_WORKSPACE_ID are required when using -with-tower.
+- If your cluster uses environment modules, load Nextflow before submitting the job.
 
-### Test data
-At the moment some publicly available alignment (BAM) files are available in`test-data` directory. For further analysis of iRAP/ISL pipeline more data can be downloaded following [iRAP setup data](https://github.com/nunofonseca/irap/wiki/7-Quick-Example#setup-the-data) wiki.
+The script will:
+- Process each `batch_info/batch_*.csv`
+- Skip batches that already have `results/<batch_id>/.done`
+- Skip FASTQ conversion when reusable inputs already exist
+- Run nf-core/rnaseq for the batch
+- On successful rnaseq completion:
+  - remove `fastq_batches/<batch_id>`
+  - remove `work_nfcore/<batch_id>`
+  - create `results/<batch_id>/.done`
+
+### Rerun behavior
+- Safe reruns are supported.
+- Completed batches are skipped via `.done` marker.
+- Failed batches are retried on subsequent runs.
+
+### Logging and trace
+- Batch logs include timestamps.
+- Nextflow trace is written per batch as `<batch_id>_trace.tsv`.
+- Main SLURM log files are written to `logs/`.
+
+### Post-processing
+After all batches complete successfully, consider sanitizing MultiQC reports:
+
+```bash
+# Sanitize MultiQC HTML/JSON reports to remove absolute paths
+# and temporary work directory references
+find results -name "multiqc*.html" -o -name "multiqc*.json" | while read f; do
+    sed -i 's|'"$(pwd)"'|.|g' "$f"
+done
+```
+
+This step:
+- Replaces absolute workspace paths with relative paths (`.`)
+- Removes potentially sensitive file paths from reports
+- Makes reports portable across systems
 
 ### Requirements
-- Snakemake 7.25.3 or higher
-- [LSF](https://github.com/Snakemake-Profiles/lsf) or [SLURM](https://github.com/Snakemake-Profiles/slurm) profile configuration
-- Two scripts located at the config `private_script`:
-  - gtex_bulk_env.sh
-  - gtex_bulk_init.sh
+- Nextflow
+- SLURM
+- Singularity/Apptainer
+- Samtools Singularity image (path passed via `SAMTOOLS_IMAGE`)
+
+### Test data
+Public test BAM files are available under `test-data/` for functional checks.
