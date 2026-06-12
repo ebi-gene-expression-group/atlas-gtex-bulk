@@ -5,6 +5,8 @@
 #SBATCH --time=72:00:00
 #SBATCH --output=logs/gtex_rnaseq_batches.%j.out
 #SBATCH --error=logs/gtex_rnaseq_batches.%j.err
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=anilthanki@ebi.ac.uk
 
 set -euo pipefail
 
