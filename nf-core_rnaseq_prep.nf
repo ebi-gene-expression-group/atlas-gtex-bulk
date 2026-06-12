@@ -111,6 +111,7 @@ process CREATE_BATCH_INFO {
     def csv_lines = rows.collect { row ->
         "${row[0]},${row[1]},${row[2]},${row[3]}"
     }.join("\n")
+    def sample_count = samples.size()
 
     """
     set -euo pipefail
@@ -120,7 +121,7 @@ sample,bam,strandedness,read_type
 ${csv_lines}
 EOF
 
-    echo "Created ${batch_id}_info.csv with \${samples.size()} samples"
+    echo "Created ${batch_id}_info.csv with ${sample_count} samples"
     cat ${batch_id}_info.csv
     """
 }
