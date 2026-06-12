@@ -161,6 +161,8 @@ for batch_info in batch_info/batch_*.csv; do
     [ -f "conf/rnaseq.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/rnaseq.config" )
     [ -f "conf/star.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/star.config" )
 
+    module load nextflow/25.04.6
+
     nextflow run rnaseq/main.nf \
         -params-file "conf/params.json" \
         "${NEXTFLOW_CONFIG_ARGS[@]}" \
