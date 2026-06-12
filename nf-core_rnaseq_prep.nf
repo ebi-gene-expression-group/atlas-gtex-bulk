@@ -1,13 +1,10 @@
 nextflow.enable.dsl=2
 
-params.manifest     = params.manifest     ?: "bams_manifest.csv"
-params.batch_size   = params.batch_size   ?: 100
-params.fastq_outdir = params.fastq_outdir ?: "fastq_batches"
-params.samplesheets = params.samplesheets ?: "samplesheets"
+params.manifest   = params.manifest   ?: "bams_manifest.csv"
+params.batch_size = params.batch_size ?: 100
+params.batchinfo  = params.batchinfo  ?: "batch_info"
 
 workflow {
-
-    def fastq_outdir_abs = file(params.fastq_outdir).toAbsolutePath().toString()
 
     Channel
         .fromPath(params.manifest)
@@ -45,36 +42,14 @@ workflow {
                     item[0],             // sample
                     item[1],             // bam
                     item[2],             // strandedness
-                    item[3],             // read_type
-                    fastq_outdir_abs
+                    item[3]              // read_type
                 )
             }
         }
+        .groupTuple(by: 0)
         .set { batched_bams_ch }
     
-    batched_bams_ch
-        .branch {
-            pe: it[4] == "pe"
-            se: it[4] == "se"
-        }
-        .set { readtype_ch }
-    
-    BAM_TO_FASTQ_PE(readtype_ch.pe)
-    BAM_TO_FASTQ_SE(readtype_ch.se)
-    
-    BAM_TO_FASTQ_PE.out
-        .map { batch_id, sample, fastq_1, fastq_2, strandedness, read_type, r1_file, r2_file ->
-            tuple(batch_id, sample, fastq_1, fastq_2, strandedness, read_type)
-        }
-        .mix(
-            BAM_TO_FASTQ_SE.out.map { batch_id, sample, fastq_1, fastq_2, strandedness, read_type, fastq_file ->
-                tuple(batch_id, sample, fastq_1, fastq_2, strandedness, read_type)
-            }
-        )
-        .groupTuple(by: 0)
-        .set { grouped_fastqs_ch }
-    
-    MAKE_SAMPLESHEET(grouped_fastqs_ch)
+    CREATE_BATCH_INFO(batched_bams_ch)
 }
 
 process DETECT_READ_TYPE {
@@ -109,145 +84,17 @@ process DETECT_READ_TYPE {
     """
 }
 
-
-
-
-process BAM_TO_FASTQ_PE {
-
-    tag "${batch_id}:${sample}:PE"
-    conda "envs/samtools.yml"
-
-    publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
-
-    input:
-    tuple val(batch_id), val(sample), path(bam), val(strandedness), val(read_type), val(fastq_outdir)
-
-    output:
-    tuple(
-        val(batch_id),
-        val(sample),
-        val("${fastq_outdir}/${batch_id}/${sample}_R1.fastq.gz"),
-        val("${fastq_outdir}/${batch_id}/${sample}_R2.fastq.gz"),
-        val(strandedness),
-        val("pe"),
-        path("${sample}_R1.fastq.gz"),
-        path("${sample}_R2.fastq.gz")
-    )
-
-    script:
-    """
-    set -euo pipefail
-
-    echo "Converting paired-end BAM to FASTQ: ${sample}"
-
-    samtools quickcheck -v ${bam}
-
-    samtools collate \\
-        -@ ${task.cpus} \\
-        -u \\
-        -O ${bam} \\
-    | samtools fastq \\
-        -@ ${task.cpus} \\
-        -F 0x900 \\
-        -1 ${sample}_R1.fastq.gz \\
-        -2 ${sample}_R2.fastq.gz \\
-        -0 /dev/null \\
-        -s /dev/null \\
-        -n -
-
-    gzip -t ${sample}_R1.fastq.gz
-    gzip -t ${sample}_R2.fastq.gz
-
-    R1_LINES=\$(gzip -cd ${sample}_R1.fastq.gz | wc -l)
-    R2_LINES=\$(gzip -cd ${sample}_R2.fastq.gz | wc -l)
-
-    if [ \$((R1_LINES % 4)) -ne 0 ]; then
-        echo "ERROR: R1 FASTQ line count is not divisible by 4"
-        exit 1
-    fi
-
-    if [ \$((R2_LINES % 4)) -ne 0 ]; then
-        echo "ERROR: R2 FASTQ line count is not divisible by 4"
-        exit 1
-    fi
-
-    R1_READS=\$((R1_LINES / 4))
-    R2_READS=\$((R2_LINES / 4))
-
-    if [ "\$R1_READS" -ne "\$R2_READS" ]; then
-        echo "ERROR: PE read counts differ for ${sample}"
-        echo "R1 reads: \$R1_READS"
-        echo "R2 reads: \$R2_READS"
-        exit 1
-    fi
-
-    echo "PE FASTQ validation passed for ${sample}"
-    """
-}
-
-process BAM_TO_FASTQ_SE {
-
-    tag "${batch_id}:${sample}:SE"
-    conda "envs/samtools.yml"
-
-    publishDir { "${fastq_outdir}/${batch_id}" }, mode: 'copy'
-
-    input:
-    tuple val(batch_id), val(sample), path(bam), val(strandedness), val(read_type), val(fastq_outdir)
-
-    output:
-    tuple(
-        val(batch_id),
-        val(sample),
-        val("${fastq_outdir}/${batch_id}/${sample}.fastq.gz"),
-        val(""),
-        val(strandedness),
-        val("se"),
-        path("${sample}.fastq.gz")
-    )
-
-    script:
-    """
-    set -euo pipefail
-
-    echo "Converting single-end BAM to FASTQ: ${sample}"
-
-    samtools quickcheck -v ${bam}
-
-    samtools fastq \\
-        -@ ${task.cpus} \\
-        -F 0x900 \\
-        -n \\
-        -o ${sample}.fastq.gz \\
-        ${bam}
-
-    gzip -t ${sample}.fastq.gz
-
-    SE_LINES=\$(gzip -cd ${sample}.fastq.gz | wc -l)
-
-    if [ \$((SE_LINES % 4)) -ne 0 ]; then
-        echo "ERROR: SE FASTQ line count is not divisible by 4"
-        exit 1
-    fi
-
-    SE_READS=\$((SE_LINES / 4))
-
-    echo "SE FASTQ validation passed for ${sample}"
-    echo "Reads: \$SE_READS"
-    """
-}
-
-process MAKE_SAMPLESHEET {
+process CREATE_BATCH_INFO {
 
     tag "${batch_id}"
 
-    publishDir "${params.samplesheets}", mode: 'copy'
+    publishDir "${params.batchinfo}", mode: 'copy'
 
     input:
-    tuple val(batch_id), val(samples), val(fastq_1s), val(fastq_2s), val(strandednesses), val(read_types)
+    tuple val(batch_id), val(samples), val(bams), val(strandednesses), val(read_types)
 
     output:
-    path("samplesheet_${batch_id}.csv")
+    path("${batch_id}_info.csv")
 
     script:
     def rows = []
@@ -255,9 +102,9 @@ process MAKE_SAMPLESHEET {
     for (int i = 0; i < samples.size(); i++) {
         rows << [
             samples[i],
-            fastq_1s[i],
-            fastq_2s[i],
-            strandednesses[i]
+            bams[i],
+            strandednesses[i],
+            read_types[i]
         ]
     }
 
@@ -268,12 +115,12 @@ process MAKE_SAMPLESHEET {
     """
     set -euo pipefail
 
-    cat > samplesheet_${batch_id}.csv <<'EOF'
-sample,fastq_1,fastq_2,strandedness
+    cat > ${batch_id}_info.csv <<'EOF'
+sample,bam,strandedness,read_type
 ${csv_lines}
 EOF
 
-    echo "Created samplesheet_${batch_id}.csv"
-    cat samplesheet_${batch_id}.csv
+    echo "Created ${batch_id}_info.csv with \${samples.size()} samples"
+    cat ${batch_id}_info.csv
     """
 }
