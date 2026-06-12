@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
+#SBATCH --job-name=gtex_rnaseq_batches
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=72:00:00
+#SBATCH --output=logs/gtex_rnaseq_batches.%j.out
+#SBATCH --error=logs/gtex_rnaseq_batches.%j.err
+
 set -euo pipefail
 
-NFCORE_VERSION="3.18.0"
-PROFILE="singularity,slurm"
-GENOME="GRCh38"
-ALIGNER="star_salmon"
-SAMTOOLS_CPUS=8
-SAMTOOLS_MEM="32G"
+SAMTOOLS_CPUS="${SLURM_CPUS_PER_TASK:-8}"
 FASTQ_OUTDIR="fastq_batches"
 SAMTOOLS_IMAGE="${SAMTOOLS_IMAGE:-}"
 
@@ -69,7 +71,7 @@ create_samplesheet() {
     head -n 5 "${samplesheet}"
 }
 
-# Process each batch
+# Process each batch in this single SLURM allocation
 for batch_info in batch_info/batch_*.csv; do
     [ -f "${batch_info}" ] || continue
     
@@ -87,68 +89,51 @@ for batch_info in batch_info/batch_*.csv; do
     samplesheet="${batch_fastq_dir}/samplesheet.csv"
     create_samplesheet "${batch_info}"
     
-    # Submit nf-core/rnaseq job
-    echo "Submitting nf-core/rnaseq for ${batch_id}"
-    
-    sbatch \
-      --job-name="rnaseq_${batch_id}" \
-      --cpus-per-task=1 \
-      --mem=4G \
-      --time=10-00:00:00 \
-      --output="logs/${batch_id}.%j.out" \
-      --error="logs/${batch_id}.%j.err" \
-      <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
+    echo "Running nf-core/rnaseq for ${batch_id}"
 
-BATCH_ID="${batch_id}"
-BATCH_FASTQ_DIR="${batch_fastq_dir}"
-SAMPLESHEET="${samplesheet}"
+    RIBO_INDEX=$(grep -oP '"ribo_database_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
+    RIBO_MANIFEST=$(grep -oP '"ribo_database_manifest"\s*:\s*"\K[^"]+' "conf/params.json" || true)
+    CONTAM_INDEX=$(grep -oP '"contamination_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
 
-echo "Running nf-core/rnaseq for \${BATCH_ID}..."
+    NEXTFLOW_CONFIG_ARGS=()
+    [ -f "conf/rnaseq.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/rnaseq.config" )
+    [ -f "conf/star.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/star.config" )
 
-RIBO_INDEX=\$(grep -oP '"ribo_database_index"\\s*:\\s*"\\K[^"]+' "conf/params.json" || true)
-RIBO_MANIFEST=\$(grep -oP '"ribo_database_manifest"\\s*:\\s*"\\K[^"]+' "conf/params.json" || true)
-CONTAM_INDEX=\$(grep -oP '"contamination_index"\\s*:\\s*"\\K[^"]+' "conf/params.json" || true)
+    nextflow run rnaseq/main.nf \
+        -params-file "conf/params.json" \
+        "${NEXTFLOW_CONFIG_ARGS[@]}" \
+        -profile singularity \
+        --input "${samplesheet}" \
+        --outdir "results/${batch_id}" \
+        --contaminant_screening kraken2_bracken \
+        --kraken_db "${CONTAM_INDEX}" \
+        --without-wave \
+        --save_unaligned \
+        --skip_bbsplit \
+        --skip_fastqc \
+        --skip_rseqc \
+        --skip_qualimap \
+        --skip_dupradar \
+        --skip_preseq \
+        --skip_biotype_qc \
+        --skip_stringtie \
+        --skip_deseq2_qc \
+        --skip_markduplicates \
+        --skip_bigwig \
+        --remove_ribo_rna \
+        --ribo_removal_tool sortmerna \
+        --ribo_database_manifest "${RIBO_MANIFEST}" \
+        --sortmerna_index "${RIBO_INDEX}" \
+        -with-trace "${batch_id}_trace.tsv" \
+        -work-dir "work_nfcore/${batch_id}" \
+        -with-tower \
+        -name "nf_core_gtex_rnaseq_${batch_id}"
 
-nextflow run rnaseq/main.nf \\
-        -params-file "conf/params.json" \\
-        -c "conf/rnaseq.config" \\
-        -c "conf/star.config" \\
-        -profile singularity \\
-         --input "\${SAMPLESHEET}" \\
-        --outdir "results/\${BATCH_ID}" \\
-        --contaminant_screening kraken2_bracken \\
-        --kraken_db "\${CONTAM_INDEX}" \\
-        --without-wave \\
-        --save_unaligned \\
-        --skip_bbsplit \\
-        --skip_fastqc \\
-        --skip_rseqc \\
-        --skip_qualimap \\
-        --skip_dupradar \\
-        --skip_preseq \\
-        --skip_biotype_qc \\
-        --skip_stringtie \\
-        --skip_deseq2_qc \\
-        --skip_markduplicates \\
-        --skip_bigwig \\
-        --remove_ribo_rna \\
-        --ribo_removal_tool sortmerna \\
-        --ribo_database_manifest "\${RIBO_MANIFEST}" \\
-        --sortmerna_index "\${RIBO_INDEX}" \\
-        -with-trace "\${BATCH_ID}_trace.tsv" \\
-        -work-dir "work_nfcore/\${BATCH_ID}" \\
-        -with-tower \\
-        -name "nf_core_gtex_rnaseq_\${BATCH_ID}"
-
-echo "nf-core/rnaseq complete for \${BATCH_ID}"
-echo "Cleaning up FASTQ files..."
-rm -rf "\${BATCH_FASTQ_DIR}"
-echo "Cleanup complete for \${BATCH_ID}"
-
-EOF
+    echo "nf-core/rnaseq complete for ${batch_id}"
+    echo "Cleaning up FASTQ files..."
+    rm -rf "${batch_fastq_dir}"
+    echo "Cleanup complete for ${batch_id}"
 
 done
 
-echo "All batches submitted!"
+echo "All batches finished."
