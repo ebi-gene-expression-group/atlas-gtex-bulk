@@ -30,28 +30,19 @@ convert_batch_to_fastq() {
     # Skip header row and process each BAM
     tail -n +2 "${batch_info}" | while IFS=',' read -r sample bam strandedness read_type; do
         echo "  Converting ${sample} (${read_type})..."
-        
-        if [ "${read_type}" = "pe" ]; then
-            singularity exec ${SAMTOOLS_IMAGE} samtools collate \
-                -@ ${SAMTOOLS_CPUS} \
-                -u \
-                -O "${bam}" \
-            | singularity exec ${SAMTOOLS_IMAGE} samtools fastq \
-                -@ ${SAMTOOLS_CPUS} \
-                -F 0x900 \
-                -1 "${batch_fastq_dir}/${sample}_R1.fastq.gz" \
-                -2 "${batch_fastq_dir}/${sample}_R2.fastq.gz" \
-                -0 /dev/null \
-                -s /dev/null \
-                -n -
-        else
-            singularity exec ${SAMTOOLS_IMAGE} samtools fastq \
-                -@ ${SAMTOOLS_CPUS} \
-                -F 0x900 \
-                -n \
-                -o "${batch_fastq_dir}/${sample}.fastq.gz" \
-                "${bam}"
-        fi
+
+        singularity exec ${SAMTOOLS_IMAGE} samtools collate \
+            -@ ${SAMTOOLS_CPUS} \
+            -u \
+            -O "${bam}" \
+        | singularity exec ${SAMTOOLS_IMAGE} samtools fastq \
+            -@ ${SAMTOOLS_CPUS} \
+            -F 0x900 \
+            -1 "${batch_fastq_dir}/${sample}_R1.fastq.gz" \
+            -2 "${batch_fastq_dir}/${sample}_R2.fastq.gz" \
+            -0 /dev/null \
+            -s /dev/null \
+            -n -
     done
     
     echo "FASTQ conversion complete for ${batch_id}"
@@ -71,11 +62,7 @@ create_samplesheet() {
     
     # Process each BAM entry
     tail -n +2 "${batch_info}" | while IFS=',' read -r sample bam strandedness read_type; do
-        if [ "${read_type}" = "pe" ]; then
-            echo "${sample},${batch_fastq_dir}/${sample}_R1.fastq.gz,${batch_fastq_dir}/${sample}_R2.fastq.gz,${strandedness}" >> "${samplesheet}"
-        else
-            echo "${sample},${batch_fastq_dir}/${sample}.fastq.gz,,${strandedness}" >> "${samplesheet}"
-        fi
+        echo "${sample},${batch_fastq_dir}/${sample}_R1.fastq.gz,${batch_fastq_dir}/${sample}_R2.fastq.gz,${strandedness}" >> "${samplesheet}"
     done
     
     echo "Samplesheet: ${samplesheet}"
