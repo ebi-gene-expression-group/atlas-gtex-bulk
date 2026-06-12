@@ -169,7 +169,8 @@ for batch_info in batch_info/batch_*.csv; do
         -profile singularity \
         --input "${samplesheet}" \
         --outdir "results/${batch_id}" \
-        --contaminant_screening kraken2_bracken \
+	--igenomes_ignore \
+	--contaminant_screening kraken2_bracken \
         --kraken_db "${CONTAM_INDEX}" \
         --without-wave \
         --save_unaligned \
