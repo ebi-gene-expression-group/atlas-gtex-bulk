@@ -107,15 +107,40 @@ SAMPLESHEET="${samplesheet}"
 
 echo "Running nf-core/rnaseq for \${BATCH_ID}..."
 
-nextflow run nf-core/rnaseq \\
-  -r ${NFCORE_VERSION} \\
-  -profile ${PROFILE} \\
-  --input "\${SAMPLESHEET}" \\
-  --outdir "results/\${BATCH_ID}" \\
-  --genome ${GENOME} \\
-  --aligner ${ALIGNER} \\
-  -work-dir "work_nfcore/\${BATCH_ID}" \\
-  -resume
+RIBO_INDEX=\$(grep -oP '"ribo_database_index"\\s*:\\s*"\\K[^"]+' "conf/params.json" || true)
+RIBO_MANIFEST=\$(grep -oP '"ribo_database_manifest"\\s*:\\s*"\\K[^"]+' "conf/params.json" || true)
+CONTAM_INDEX=\$(grep -oP '"contamination_index"\\s*:\\s*"\\K[^"]+' "conf/params.json" || true)
+
+nextflow run rnaseq/main.nf \\
+        -params-file "conf/params.json" \\
+        -c "conf/rnaseq.config" \\
+        -c "conf/star.config" \\
+        -profile singularity \\
+         --input "\${SAMPLESHEET}" \\
+        --outdir "results/\${BATCH_ID}" \\
+        --contaminant_screening kraken2_bracken \\
+        --kraken_db "\${CONTAM_INDEX}" \\
+        --without-wave \\
+        --save_unaligned \\
+        --skip_bbsplit \\
+        --skip_fastqc \\
+        --skip_rseqc \\
+        --skip_qualimap \\
+        --skip_dupradar \\
+        --skip_preseq \\
+        --skip_biotype_qc \\
+        --skip_stringtie \\
+        --skip_deseq2_qc \\
+        --skip_markduplicates \\
+        --skip_bigwig \\
+        --remove_ribo_rna \\
+        --ribo_removal_tool sortmerna \\
+        --ribo_database_manifest "\${RIBO_MANIFEST}" \\
+        --sortmerna_index "\${RIBO_INDEX}" \\
+        -with-trace "\${BATCH_ID}_trace.tsv" \\
+        -work-dir "work_nfcore/\${BATCH_ID}" \\
+        -with-tower \\
+        -name "nf_core_gtex_rnaseq_\${BATCH_ID}"
 
 echo "nf-core/rnaseq complete for \${BATCH_ID}"
 echo "Cleaning up FASTQ files..."
