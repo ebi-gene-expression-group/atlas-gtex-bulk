@@ -21,35 +21,65 @@ fi
 
 mkdir -p logs results work_nfcore "${FASTQ_OUTDIR}"
 
-# Function to convert BAMs to FASTQ for a batch
+# Convert a single BAM to paired-end FASTQ
+convert_one_bam() {
+    local sample="$1"
+    local bam="$2"
+    local batch_fastq_dir="$3"
+    local threads="$4"
+    
+    echo "  Converting ${sample}..."
+    singularity exec ${SAMTOOLS_IMAGE} samtools collate \
+        -@ ${threads} \
+        -u \
+        -O "${bam}" \
+    | singularity exec ${SAMTOOLS_IMAGE} samtools fastq \
+        -@ ${threads} \
+        -F 0x900 \
+        -1 "${batch_fastq_dir}/${sample}_R1.fastq.gz" \
+        -2 "${batch_fastq_dir}/${sample}_R2.fastq.gz" \
+        -0 /dev/null \
+        -s /dev/null \
+        -n -
+}
+
+# Function to convert BAMs to FASTQ for a batch in parallel
 convert_batch_to_fastq() {
     local batch_info="$1"
     local batch_id=$(basename "${batch_info}" _info.csv)
     local batch_fastq_dir="${FASTQ_OUTDIR}/${batch_id}"
+    local MAX_PARALLEL=$(( (SAMTOOLS_CPUS + 1) / 2 ))  # ~2 threads per parallel job
+    local threads=$(( SAMTOOLS_CPUS / MAX_PARALLEL ))
     
     mkdir -p "${batch_fastq_dir}"
     
-    echo "Converting BAMs to FASTQ for ${batch_id}..."
+    echo "Converting BAMs to FASTQ for ${batch_id} (${MAX_PARALLEL} parallel jobs, ${threads} threads each)..."
     
-    # Skip header row and process each BAM
+    local pids=()
+    local failed=0
+    
+    # Skip header row and spawn parallel conversion jobs
     tail -n +2 "${batch_info}" | while IFS=',' read -r sample bam strandedness read_type; do
-        echo "  Converting ${sample} (${read_type})..."
-
-        singularity exec ${SAMTOOLS_IMAGE} samtools collate \
-            -@ ${SAMTOOLS_CPUS} \
-            -u \
-            -O "${bam}" \
-        | singularity exec ${SAMTOOLS_IMAGE} samtools fastq \
-            -@ ${SAMTOOLS_CPUS} \
-            -F 0x900 \
-            -1 "${batch_fastq_dir}/${sample}_R1.fastq.gz" \
-            -2 "${batch_fastq_dir}/${sample}_R2.fastq.gz" \
-            -0 /dev/null \
-            -s /dev/null \
-            -n -
+        # Wait if we've reached max parallel jobs
+        while [ $(jobs -r | wc -l) -ge ${MAX_PARALLEL} ]; do
+            sleep 1
+        done
+        
+        # Launch conversion in background
+        convert_one_bam "${sample}" "${bam}" "${batch_fastq_dir}" "${threads}" &
     done
     
+    # Wait for all background jobs to complete
+    wait
+    local wait_status=$?
+    
+    if [ ${wait_status} -ne 0 ]; then
+        echo "ERROR: FASTQ conversion failed for ${batch_id}"
+        return 1
+    fi
+    
     echo "FASTQ conversion complete for ${batch_id}"
+    return 0
 }
 
 # Function to create nf-core/rnaseq samplesheet from batch info and FASTQs
@@ -73,23 +103,51 @@ create_samplesheet() {
     head -n 5 "${samplesheet}"
 }
 
+# Return success when all expected PE FASTQ files for a batch already exist.
+batch_fastqs_exist() {
+    local batch_info="$1"
+    local batch_fastq_dir="$2"
+
+    tail -n +2 "${batch_info}" | while IFS=',' read -r sample bam strandedness read_type; do
+        if [ ! -s "${batch_fastq_dir}/${sample}_R1.fastq.gz" ] || [ ! -s "${batch_fastq_dir}/${sample}_R2.fastq.gz" ]; then
+            exit 1
+        fi
+    done
+}
+
 # Process each batch in this single SLURM allocation
 for batch_info in batch_info/batch_*.csv; do
     [ -f "${batch_info}" ] || continue
     
     batch_id=$(basename "${batch_info}" _info.csv)
     batch_fastq_dir="${FASTQ_OUTDIR}/${batch_id}"
+    batch_done_marker="results/${batch_id}/.done"
     
     echo "=========================================="
     echo "Processing ${batch_id}"
     echo "=========================================="
     
-    # Convert BAMs to FASTQ
-    convert_batch_to_fastq "${batch_info}"
+    if [ -f "${batch_done_marker}" ]; then
+        echo "Batch ${batch_id} already completed (marker found); skipping."
+        continue
+    fi
     
-    # Create samplesheet
+    # Convert BAMs to FASTQ (skip if samplesheet already exists)
     samplesheet="${batch_fastq_dir}/samplesheet.csv"
-    create_samplesheet "${batch_info}"
+
+    if [ -s "${samplesheet}" ]; then
+        echo "Samplesheet already exists for ${batch_id}; skipping FASTQ conversion."
+    else
+        if batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
+            echo "All FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
+        else
+            convert_batch_to_fastq "${batch_info}" || {
+                echo "ERROR: FASTQ conversion failed for ${batch_id}; skipping this batch."
+                continue
+            }
+        fi
+        create_samplesheet "${batch_info}"
+    fi
     
     echo "Running nf-core/rnaseq for ${batch_id}"
 
@@ -131,10 +189,16 @@ for batch_info in batch_info/batch_*.csv; do
         -with-tower \
         -name "nf_core_gtex_rnaseq_${batch_id}"
 
-    echo "nf-core/rnaseq complete for ${batch_id}"
-    echo "Cleaning up FASTQ files..."
-    rm -rf "${batch_fastq_dir}"
-    echo "Cleanup complete for ${batch_id}"
+    if [ $? -eq 0 ]; then
+        echo "nf-core/rnaseq completed successfully for ${batch_id}"
+        echo "Cleaning up FASTQ files and work directory..."
+        rm -rf "${batch_fastq_dir}" "work_nfcore/${batch_id}" ".nextflow/history" || true
+        mkdir -p "results/${batch_id}"
+        touch "${batch_done_marker}"
+        echo "Cleanup complete for ${batch_id}; marked batch as complete."
+    else
+        echo "ERROR: nf-core/rnaseq failed for ${batch_id}; preserving FASTQ and work files for debugging."
+    fi
 
 done
 
