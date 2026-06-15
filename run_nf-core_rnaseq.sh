@@ -189,10 +189,10 @@ for batch_info in batch_info/batch_*.csv; do
         --ribo_removal_tool sortmerna \
         --ribo_database_manifest "${RIBO_MANIFEST}" \
         --sortmerna_index "${RIBO_INDEX}" \
-        -with-trace "${batch_id}_trace.tsv" \
+        -with-trace "${batch_id}_${SLURM_JOB_ID}_trace.tsv" \
         -work-dir "work_nfcore/${batch_id}" \
         -with-tower \
-        -name "nf_core_gtex_rnaseq_${batch_id}"
+        -name "nf_core_gtex_rnaseq_${batch_id}_${SLURM_JOB_ID}"
 
     if [ $? -eq 0 ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core/rnaseq completed successfully for ${batch_id}"
