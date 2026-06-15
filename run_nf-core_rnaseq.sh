@@ -57,23 +57,34 @@ convert_batch_to_fastq() {
     
     local pids=()
     local failed=0
-    
-    # Skip header row and spawn parallel conversion jobs
-    tail -n +2 "${batch_info}" | while IFS=',' read -r sample bam strandedness read_type; do
-        # Wait if we've reached max parallel jobs
-        while [ $(jobs -r | wc -l) -ge ${MAX_PARALLEL} ]; do
-            sleep 1
-        done
-        
-        # Launch conversion in background
+    local sample=""
+    local bam=""
+    local strandedness=""
+    local read_type=""
+
+    # Spawn conversion jobs and throttle to MAX_PARALLEL.
+    while IFS=',' read -r sample bam strandedness read_type; do
+        [ -z "${sample}" ] && continue
+
         convert_one_bam "${sample}" "${bam}" "${batch_fastq_dir}" "${threads}" &
+        pids+=("$!")
+
+        if [ "${#pids[@]}" -ge "${MAX_PARALLEL}" ]; then
+            if ! wait "${pids[0]}"; then
+                failed=1
+            fi
+            pids=("${pids[@]:1}")
+        fi
+    done < <(tail -n +2 "${batch_info}")
+
+    # Wait for remaining background jobs.
+    for pid in "${pids[@]}"; do
+        if ! wait "${pid}"; then
+            failed=1
+        fi
     done
-    
-    # Wait for all background jobs to complete
-    wait
-    local wait_status=$?
-    
-    if [ ${wait_status} -ne 0 ]; then
+
+    if [ "${failed}" -ne 0 ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}"
         return 1
     fi
@@ -107,12 +118,19 @@ create_samplesheet() {
 batch_fastqs_exist() {
     local batch_info="$1"
     local batch_fastq_dir="$2"
+    local sample=""
+    local bam=""
+    local strandedness=""
+    local read_type=""
 
-    tail -n +2 "${batch_info}" | while IFS=',' read -r sample bam strandedness read_type; do
+    while IFS=',' read -r sample bam strandedness read_type; do
+        [ -z "${sample}" ] && continue
         if [ ! -s "${batch_fastq_dir}/${sample}_R1.fastq.gz" ] || [ ! -s "${batch_fastq_dir}/${sample}_R2.fastq.gz" ]; then
-            exit 1
+            return 1
         fi
-    done
+    done < <(tail -n +2 "${batch_info}")
+
+    return 0
 }
 
 # Process each batch in this single SLURM allocation
@@ -135,10 +153,12 @@ for batch_info in batch_info/batch_*.csv; do
     # Convert BAMs to FASTQ (skip if samplesheet already exists)
     samplesheet="${batch_fastq_dir}/samplesheet.csv"
 
-    if [ -s "${samplesheet}" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet already exists for ${batch_id}; skipping FASTQ conversion."
+    if [ -s "${samplesheet}" ] && batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet and FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
     else
-        if batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
+        if [ -s "${samplesheet}" ]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet exists but FASTQs are missing/incomplete for ${batch_id}; regenerating FASTQs."
+        elif batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] All FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
         else
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting FASTQ conversion for ${batch_id}..."
