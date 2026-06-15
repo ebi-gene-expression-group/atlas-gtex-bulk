@@ -158,6 +158,11 @@ for batch_info in batch_info/batch_*.csv; do
     else
         if [ -s "${samplesheet}" ]; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet exists but FASTQs are missing/incomplete for ${batch_id}; regenerating FASTQs."
+            convert_batch_to_fastq "${batch_info}" || {
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}; skipping this batch."
+                continue
+            }
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQ conversion completed for ${batch_id}."
         elif batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] All FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
         else
