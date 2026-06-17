@@ -10,88 +10,13 @@
 
 set -euo pipefail
 
-SAMTOOLS_CPUS="${SLURM_CPUS_PER_TASK:-8}"
 FASTQ_OUTDIR="fastq_batches"
-SAMTOOLS_IMAGE="${SAMTOOLS_IMAGE:-}"
-
-if [ -z "${SAMTOOLS_IMAGE}" ]; then
-    echo "ERROR: SAMTOOLS_IMAGE environment variable not set"
-    exit 1
-fi
+SAMTOOLS_IMAGE="${SAMTOOLS_IMAGE:?SAMTOOLS_IMAGE environment variable not set}"
 
 mkdir -p logs results work_nfcore "${FASTQ_OUTDIR}"
 
-# Convert a single BAM to paired-end FASTQ
-convert_one_bam() {
-    local sample="$1"
-    local bam="$2"
-    local batch_fastq_dir="$3"
-    local threads="$4"
-    
-    echo "    [$(date '+%Y-%m-%d %H:%M:%S')] Converting ${sample}..."
-    singularity exec ${SAMTOOLS_IMAGE} samtools collate \
-        -@ ${threads} \
-        -u \
-        -O "${bam}" \
-    | singularity exec ${SAMTOOLS_IMAGE} samtools fastq \
-        -@ ${threads} \
-        -F 0x900 \
-        -1 "${batch_fastq_dir}/${sample}_R1.fastq.gz" \
-        -2 "${batch_fastq_dir}/${sample}_R2.fastq.gz" \
-        -0 /dev/null \
-        -s /dev/null \
-        -n -
-}
-
-# Function to convert BAMs to FASTQ for a batch in parallel
-convert_batch_to_fastq() {
-    local batch_info="$1"
-    local batch_id=$(basename "${batch_info}" _info.csv)
-    local batch_fastq_dir="${FASTQ_OUTDIR}/${batch_id}"
-    local MAX_PARALLEL=$(( (SAMTOOLS_CPUS + 1) / 2 ))  # ~2 threads per parallel job
-    local threads=$(( SAMTOOLS_CPUS / MAX_PARALLEL ))
-    
-    mkdir -p "${batch_fastq_dir}"
-    
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Converting BAMs to FASTQ for ${batch_id} (${MAX_PARALLEL} parallel jobs, ${threads} threads each)..."
-    
-    local pids=()
-    local failed=0
-    local sample=""
-    local bam=""
-    local strandedness=""
-    local read_type=""
-
-    # Spawn conversion jobs and throttle to MAX_PARALLEL.
-    while IFS=',' read -r sample bam strandedness read_type; do
-        [ -z "${sample}" ] && continue
-
-        convert_one_bam "${sample}" "${bam}" "${batch_fastq_dir}" "${threads}" &
-        pids+=("$!")
-
-        if [ "${#pids[@]}" -ge "${MAX_PARALLEL}" ]; then
-            if ! wait "${pids[0]}"; then
-                failed=1
-            fi
-            pids=("${pids[@]:1}")
-        fi
-    done < <(tail -n +2 "${batch_info}")
-
-    # Wait for remaining background jobs.
-    for pid in "${pids[@]}"; do
-        if ! wait "${pid}"; then
-            failed=1
-        fi
-    done
-
-    if [ "${failed}" -ne 0 ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}"
-        return 1
-    fi
-    
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQ conversion complete for ${batch_id}"
-    return 0
-}
+declare -a nfcore_pids=()
+declare -a nfcore_batches=()
 
 # Function to create nf-core/rnaseq samplesheet from batch info and FASTQs
 create_samplesheet() {
@@ -133,51 +58,65 @@ batch_fastqs_exist() {
     return 0
 }
 
-# Process each batch in this single SLURM allocation
+# Process each batch: submit conversions, then start nf-core in background
 for batch_info in batch_info/batch_*.csv; do
     [ -f "${batch_info}" ] || continue
     
     batch_id=$(basename "${batch_info}" _info.csv)
     batch_fastq_dir="${FASTQ_OUTDIR}/${batch_id}"
     batch_done_marker="results/${batch_id}/.done"
+    samplesheet="${batch_fastq_dir}/samplesheet.csv"
     
     echo "=========================================="
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Processing ${batch_id}"
     echo "=========================================="
     
     if [ -f "${batch_done_marker}" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Batch ${batch_id} already completed (marker found); skipping."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Batch ${batch_id} already completed; skipping."
         continue
     fi
     
-    # Convert BAMs to FASTQ (skip if samplesheet already exists)
-    samplesheet="${batch_fastq_dir}/samplesheet.csv"
-
+    mkdir -p "${batch_fastq_dir}"
+    
+    # Check if FASTQs already exist
     if [ -s "${samplesheet}" ] && batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet and FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQs already exist for ${batch_id}; skipping conversion."
     else
-        if [ -s "${samplesheet}" ]; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Samplesheet exists but FASTQs are missing/incomplete for ${batch_id}; regenerating FASTQs."
-            convert_batch_to_fastq "${batch_info}" || {
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}; skipping this batch."
-                continue
-            }
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQ conversion completed for ${batch_id}."
-        elif batch_fastqs_exist "${batch_info}" "${batch_fastq_dir}"; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] All FASTQs already exist for ${batch_id}; skipping FASTQ conversion."
-        else
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting FASTQ conversion for ${batch_id}..."
-            convert_batch_to_fastq "${batch_info}" || {
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: FASTQ conversion failed for ${batch_id}; skipping this batch."
-                continue
-            }
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] FASTQ conversion completed for ${batch_id}."
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Submitting conversion jobs for ${batch_id} samples..."
+        
+        declare -a job_ids=()
+        
+        # Submit one job per sample in this batch
+        while IFS=',' read -r sample bam strandedness read_type; do
+            [ -z "${sample}" ] && continue
+            
+            job_id=$(sbatch --parsable \
+                --export=ALL,SAMPLE="${sample}",BAM="${bam}",BATCH_FASTQ_DIR="${batch_fastq_dir}",SAMTOOLS_IMAGE="${SAMTOOLS_IMAGE}" \
+                convert_sample_fastq.sbatch)
+            
+            job_ids+=("${job_id}")
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Submitted job ${job_id} for sample ${sample}"
+        done < <(tail -n +2 "${batch_info}")
+        
+        # Wait for all sample conversion jobs to complete
+        if [ "${#job_ids[@]}" -gt 0 ]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for ${#job_ids[@]} sample conversion jobs to finish..."
+            
+            job_list=$(IFS=,; echo "${job_ids[*]}")
+            while squeue -j "${job_list}" -h -o "%i" 2>/dev/null | grep -q .; do
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Still waiting..."
+                sleep 10
+            done
+            
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] All sample conversion jobs completed for ${batch_id}"
         fi
+        
         create_samplesheet "${batch_info}"
     fi
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting nf-core/rnaseq for ${batch_id}"
-
+    # Start nf-core/rnaseq in the background
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting nf-core/rnaseq for ${batch_id} (in background)"
+    
     RIBO_INDEX=$(grep -oP '"ribo_database_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
     RIBO_MANIFEST=$(grep -oP '"ribo_database_manifest"\s*:\s*"\K[^"]+' "conf/params.json" || true)
     CONTAM_INDEX=$(grep -oP '"contamination_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
@@ -187,49 +126,79 @@ for batch_info in batch_info/batch_*.csv; do
     [ -f "conf/star.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/star.config" )
 
     module load nextflow/25.04.6
-
-    nextflow run rnaseq/main.nf \
-        -params-file "conf/params.json" \
-        "${NEXTFLOW_CONFIG_ARGS[@]}" \
-        -profile singularity \
-        --input "${samplesheet}" \
-        --outdir "results/${batch_id}" \
-	--igenomes_ignore \
-	--contaminant_screening kraken2_bracken \
-        --kraken_db "${CONTAM_INDEX}" \
-        --without-wave \
-        --save_unaligned \
-        --skip_bbsplit \
-        --skip_fastqc \
-        --skip_rseqc \
-        --skip_qualimap \
-        --skip_dupradar \
-        --skip_preseq \
-        --skip_biotype_qc \
-        --skip_stringtie \
-        --skip_deseq2_qc \
-        --skip_markduplicates \
-        --skip_bigwig \
-        --remove_ribo_rna \
-        --ribo_removal_tool sortmerna \
-        --ribo_database_manifest "${RIBO_MANIFEST}" \
-        --sortmerna_index "${RIBO_INDEX}" \
-        -with-trace "${batch_id}_${SLURM_JOB_ID}_trace.tsv" \
-        -work-dir "work_nfcore/${batch_id}" \
-        -with-tower \
-        -name "nf_core_gtex_rnaseq_${batch_id}_${SLURM_JOB_ID}"
-
-    if [ $? -eq 0 ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core/rnaseq completed successfully for ${batch_id}"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaning up FASTQ files and work directory..."
-        rm -rf "${batch_fastq_dir}" "work_nfcore/${batch_id}" ".nextflow/history" || true
-        mkdir -p "results/${batch_id}"
-        touch "${batch_done_marker}"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleanup complete for ${batch_id}; marked batch as complete."
-    else
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core/rnaseq failed for ${batch_id}; preserving FASTQ and work files for debugging."
-    fi
+    
+    (
+        nextflow run rnaseq/main.nf \
+            -params-file "conf/params.json" \
+            "${NEXTFLOW_CONFIG_ARGS[@]}" \
+            -profile singularity \
+            --input "${samplesheet}" \
+            --outdir "results/${batch_id}" \
+            --igenomes_ignore \
+            --contaminant_screening kraken2_bracken \
+            --kraken_db "${CONTAM_INDEX}" \
+            --without-wave \
+            --save_unaligned \
+            --skip_bbsplit \
+            --skip_fastqc \
+            --skip_rseqc \
+            --skip_qualimap \
+            --skip_dupradar \
+            --skip_preseq \
+            --skip_biotype_qc \
+            --skip_stringtie \
+            --skip_deseq2_qc \
+            --skip_markduplicates \
+            --skip_bigwig \
+            --remove_ribo_rna \
+            --ribo_removal_tool sortmerna \
+            --ribo_database_manifest "${RIBO_MANIFEST}" \
+            --sortmerna_index "${RIBO_INDEX}" \
+            -with-trace "${batch_id}_${SLURM_JOB_ID}_trace.tsv" \
+            -work-dir "work_nfcore/${batch_id}" \
+            -with-tower \
+            -name "nf_core_gtex_rnaseq_${batch_id}_${SLURM_JOB_ID}"
+        
+        if [ $? -eq 0 ]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core/rnaseq completed successfully for ${batch_id}"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaning up FASTQ files and work directory..."
+            rm -rf "${batch_fastq_dir}" "work_nfcore/${batch_id}" ".nextflow/history" || true
+            mkdir -p "results/${batch_id}"
+            touch "${batch_done_marker}"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleanup complete for ${batch_id}; marked batch as complete."
+        else
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core/rnaseq failed for ${batch_id}; preserving FASTQ and work files for debugging."
+            exit 1
+        fi
+    ) &
+    
+    nfcore_pids+=("$!")
+    nfcore_batches+=("${batch_id}")
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core job for ${batch_id} running in background (PID: $!)"
 
 done
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] All batches finished."
+# Wait for all background nf-core jobs to complete
+if [ "${#nfcore_pids[@]}" -gt 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] All conversions submitted. Waiting for ${#nfcore_pids[@]} nf-core jobs to finish..."
+    
+    failed=0
+    for idx in "${!nfcore_pids[@]}"; do
+        pid="${nfcore_pids[$idx]}"
+        batch_id="${nfcore_batches[$idx]}"
+        
+        if ! wait "${pid}"; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core job for ${batch_id} (PID: ${pid}) failed"
+            failed=1
+        else
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core job for ${batch_id} completed successfully"
+        fi
+    done
+    
+    if [ "${failed}" -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Some nf-core jobs failed"
+        exit 1
+    fi
+fi
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] All batches completed successfully."
