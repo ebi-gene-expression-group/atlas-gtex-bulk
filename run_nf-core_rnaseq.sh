@@ -122,7 +122,6 @@ for batch_info in batch_info/batch_*.csv; do
     CONTAM_INDEX=$(grep -oP '"contamination_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
 
     NEXTFLOW_CONFIG_ARGS=()
-    [ -f "conf/rnaseq.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/rnaseq.config" )
     [ -f "conf/star.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/star.config" )
 
     module load nextflow/25.04.6
