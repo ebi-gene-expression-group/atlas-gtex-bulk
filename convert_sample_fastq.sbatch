@@ -2,7 +2,7 @@
 #SBATCH --job-name=gtex_sample_convert
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=24:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=logs/gtex_sample_convert_%j.out
 #SBATCH --error=logs/gtex_sample_convert_%j.err
 #SBATCH --mail-type=FAIL
