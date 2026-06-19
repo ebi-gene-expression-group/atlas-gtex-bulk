@@ -15,7 +15,7 @@ SAMTOOLS_IMAGE="${SAMTOOLS_IMAGE:?SAMTOOLS_IMAGE environment variable not set}"
 
 mkdir -p logs results work_nfcore "${FASTQ_OUTDIR}"
 
-declare -a nfcore_pids=()
+declare -a nfcore_job_ids=()
 declare -a nfcore_batches=()
 
 # Function to create nf-core/rnaseq samplesheet from batch info and FASTQs
@@ -65,6 +65,8 @@ for batch_info in batch_info/batch_*.csv; do
     batch_id=$(basename "${batch_info}" _info.csv)
     batch_fastq_dir="${FASTQ_OUTDIR}/${batch_id}"
     batch_done_marker="results/${batch_id}/.done"
+    batch_running_marker="results/${batch_id}/.running"
+    batch_failed_marker="results/${batch_id}/.failed"
     samplesheet="${batch_fastq_dir}/samplesheet.csv"
     
     echo "=========================================="
@@ -73,6 +75,16 @@ for batch_info in batch_info/batch_*.csv; do
     
     if [ -f "${batch_done_marker}" ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Batch ${batch_id} already completed; skipping."
+        continue
+    fi
+
+    if [ -f "${batch_running_marker}" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Batch ${batch_id} has a running marker; skipping rerun."
+        continue
+    fi
+
+    if [ -f "${batch_failed_marker}" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Batch ${batch_id} has a failed marker; skipping rerun."
         continue
     fi
     
@@ -116,86 +128,54 @@ for batch_info in batch_info/batch_*.csv; do
     
     # Start nf-core/rnaseq in the background
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting nf-core/rnaseq for ${batch_id} (in background)"
-    
-    RIBO_INDEX=$(grep -oP '"ribo_database_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
-    RIBO_MANIFEST=$(grep -oP '"ribo_database_manifest"\s*:\s*"\K[^"]+' "conf/params.json" || true)
-    CONTAM_INDEX=$(grep -oP '"contamination_index"\s*:\s*"\K[^"]+' "conf/params.json" || true)
 
-    NEXTFLOW_CONFIG_ARGS=()
-    [ -f "conf/star.config" ] && NEXTFLOW_CONFIG_ARGS+=( -c "conf/star.config" )
-
-    module load nextflow/25.04.6
+    mkdir -p "results/${batch_id}"
+    touch "${batch_running_marker}"
     
-    (
-        nextflow run rnaseq/main.nf \
-            -params-file "conf/params.json" \
-            "${NEXTFLOW_CONFIG_ARGS[@]}" \
-            -profile singularity \
-            --input "${samplesheet}" \
-            --outdir "results/${batch_id}" \
-            --igenomes_ignore \
-            --contaminant_screening kraken2_bracken \
-            --kraken_db "${CONTAM_INDEX}" \
-            --without-wave \
-            --save_unaligned \
-            --skip_bbsplit \
-            --skip_fastqc \
-            --skip_rseqc \
-            --skip_qualimap \
-            --skip_dupradar \
-            --skip_preseq \
-            --skip_biotype_qc \
-            --skip_stringtie \
-            --skip_deseq2_qc \
-            --skip_markduplicates \
-            --skip_bigwig \
-            --remove_ribo_rna \
-            --ribo_removal_tool sortmerna \
-            --ribo_database_manifest "${RIBO_MANIFEST}" \
-            --sortmerna_index "${RIBO_INDEX}" \
-            -with-trace "${batch_id}_${SLURM_JOB_ID}_trace.tsv" \
-            -work-dir "work_nfcore/${batch_id}" \
-            -with-tower \
-            -name "nf_core_gtex_rnaseq_${batch_id}_${SLURM_JOB_ID}"
-        
-        if [ $? -eq 0 ]; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core/rnaseq completed successfully for ${batch_id}"
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaning up FASTQ files and work directory..."
-            rm -rf "${batch_fastq_dir}" "work_nfcore/${batch_id}" ".nextflow/history" || true
-            mkdir -p "results/${batch_id}"
-            touch "${batch_done_marker}"
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleanup complete for ${batch_id}; marked batch as complete."
-        else
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core/rnaseq failed for ${batch_id}; preserving FASTQ and work files for debugging."
-            exit 1
-        fi
-    ) &
-    
-    nfcore_pids+=("$!")
-    nfcore_batches+=("${batch_id}")
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core job for ${batch_id} running in background (PID: $!)"
+    if nfcore_job_id=$(sbatch --parsable \
+        --export=ALL,BATCH_ID="${batch_id}",SAMPLESHEET="${samplesheet}",BATCH_FASTQ_DIR="${batch_fastq_dir}",BATCH_DONE_MARKER="${batch_done_marker}",BATCH_RUNNING_MARKER="${batch_running_marker}",BATCH_FAILED_MARKER="${batch_failed_marker}" \
+        run_nfcore_batch.sbatch); then
+        nfcore_job_ids+=("${nfcore_job_id}")
+        nfcore_batches+=("${batch_id}")
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Submitted nf-core Slurm job ${nfcore_job_id} for ${batch_id}"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to submit nf-core Slurm job for ${batch_id}"
+        rm -f "${batch_running_marker}"
+        touch "${batch_failed_marker}"
+    fi
 
 done
 
-# Wait for all background nf-core jobs to complete
-if [ "${#nfcore_pids[@]}" -gt 0 ]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] All conversions submitted. Waiting for ${#nfcore_pids[@]} nf-core jobs to finish..."
-    
+# Wait for all submitted nf-core Slurm jobs to complete
+if [ "${#nfcore_job_ids[@]}" -gt 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] All conversions submitted. Waiting for ${#nfcore_job_ids[@]} nf-core Slurm jobs to finish..."
+
+    job_list=$(IFS=,; echo "${nfcore_job_ids[*]}")
+    while squeue -j "${job_list}" -h -o "%i" 2>/dev/null | grep -q .; do
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core Slurm jobs still running..."
+        sleep 20
+    done
+
     failed=0
-    for idx in "${!nfcore_pids[@]}"; do
-        pid="${nfcore_pids[$idx]}"
+    for idx in "${!nfcore_job_ids[@]}"; do
+        job_id="${nfcore_job_ids[$idx]}"
         batch_id="${nfcore_batches[$idx]}"
-        
-        if ! wait "${pid}"; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core job for ${batch_id} (PID: ${pid}) failed"
-            failed=1
+        batch_done_marker="results/${batch_id}/.done"
+        batch_running_marker="results/${batch_id}/.running"
+        batch_failed_marker="results/${batch_id}/.failed"
+
+        if [ -f "${batch_done_marker}" ]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core Slurm job ${job_id} for ${batch_id} completed successfully"
         else
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] nf-core job for ${batch_id} completed successfully"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: nf-core Slurm job ${job_id} for ${batch_id} did not produce .done marker"
+            [ -f "${batch_running_marker}" ] && rm -f "${batch_running_marker}"
+            touch "${batch_failed_marker}"
+            failed=1
         fi
     done
-    
+
     if [ "${failed}" -ne 0 ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Some nf-core jobs failed"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Some nf-core Slurm jobs failed"
         exit 1
     fi
 fi
