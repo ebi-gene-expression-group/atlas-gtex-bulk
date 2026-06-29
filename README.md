@@ -94,6 +94,35 @@ This step:
 - Removes potentially sensitive file paths from reports
 - Makes reports portable across systems
 
+### Aggregation 
+
+Once all batches are analysed, resulting files can be aggregated using a python script
+
+Example
+
+```
+python merge_existing_star_salmon_matrices.py \
+  -o batch_1-2 \
+  results/batch_000001 \
+  results/batch_000002
+```
+
+This will merge results of batch_000001 and batch_000002 into batch_1-2.
+
+This script will merge files and create following directories:
+
+```
+batch_1-2/
+└── star_salmon
+    ├── salmon.merged.gene_counts.tsv
+    ├── salmon.merged.gene_tpm.tsv
+    ├── salmon.merged.transcript_counts.tsv
+    └── salmon.merged.transcript_tpm.tsv
+
+1 directory, 4 files
+```
+
+
 ### Requirements
 - Nextflow
 - SLURM
