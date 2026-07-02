@@ -60,7 +60,7 @@ Notes:
 
 The script will:
 - Process each `batch_info/batch_*.csv`
-- Skip batches that already have `results/<batch_id>/.done`
+- Skip batches that already have `results/<batch_id>/.done`, `results/<batch_id>/.running` or `results/<batch_id>/.failed`
 - Skip FASTQ conversion when reusable inputs already exist
 - Run nf-core/rnaseq for the batch
 - On successful rnaseq completion:
