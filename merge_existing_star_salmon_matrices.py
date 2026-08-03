@@ -108,7 +108,7 @@ def read_batch_matrix(path):
     samples.index = feature_key
 
     for col in samples.columns:
-        samples[col] = pd.to_numeric(samples[col], errors="ignore")
+        samples[col] = pd.to_numeric(samples[col], errors="coerce")
 
     return annotation, samples, annotation_cols
 
