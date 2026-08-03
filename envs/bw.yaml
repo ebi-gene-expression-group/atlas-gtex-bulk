@@ -1,0 +1,9 @@
+name: bw
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - deeptools
+  - samtools
+  - bedtools
+  - python=3.10
