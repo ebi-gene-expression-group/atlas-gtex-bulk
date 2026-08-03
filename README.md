@@ -229,6 +229,54 @@ Add `--copy` to copy sample directories instead of symlinking them. Add `--relax
 
 `create_star_salmon_merged_metrices.sh` is a convenience SLURM script for merging many batch directories into `batch_all`; review and edit its hard-coded batch list before submitting it.
 
+## Expression coverage generation
+Create the bed and bw environments if needed:
+
+```bash
+conda env create -f envs/bed.yaml
+conda env create -f envs/bw.yaml
+```
+
+To create expression coverage 
+1. First we create index for alignment files (.bam) using build_bam_index.sh which will create bam_index.tsv containing alignment file and path.
+2. Create file per assay containing samples.
+    ```
+      xml_file=E-GTEX-8-configuration.xml
+      output_dir=assays
+      awk -v out="$output_dir" '
+      /<assay_group[[:space:]][^>]*id="/ {
+          group_id = $0
+          sub(/^.*id="/, "", group_id)
+          sub(/".*$/, "", group_id)
+      }
+      /<assay>/ {
+          assay = $0
+          sub(/^.*<assay>[[:space:]]*/, "", assay)
+          sub(/[[:space:]]*<\/assay>.*$/, "", assay)
+          if (group_id != "" && assay != "")
+              print assay >> out "/" group_id ".txt"
+      }
+      /<\/assay_group>/ {
+          if (group_id != "")
+              close(out "/" group_id ".txt")
+          group_id = ""
+      }
+      ' "$xml_file"
+    ```
+3. Create symlink of fa.sizes file.  `ln -sf <path>/references/homo_sapiens/Ensembl/GRCh38/Sequence/WholeGenomeFasta/Homo_sapiens.GRCh38.dna.toplevel.fa.sizes Homo_sapiens.GRCh38.dna.toplevel.fa.sizes`
+4. Export environment variable `BED_CONDA_ENV` and `BW_CONDA_ENV` pointing to conda env path
+5. Generate bw and d4 per assay by running `bas submit_groups.sh`
+
+  ```bash
+    python merge_existing_star_salmon_matrices.py \
+      -o batch_1-2 \
+      results/batch_000001 \
+      results/batch_000002
+  ```
+
+This writes:
+
+
 ## Functional Check
 The repository includes public mini BAMs under `test-data/`, and the checked-in `bams_manifest.csv` points at them. A small local/HPC smoke test is:
 
