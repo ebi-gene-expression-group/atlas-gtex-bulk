@@ -1,0 +1,12 @@
+name: bed
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - ucsc-bedgraphtobigwig
+  - ucsc-bigwigmerge
+  - ucsc-bigwigtobedgraph
+  - coreutils
+  - jq
+  - d4tools
+  - deeptools
