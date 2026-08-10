@@ -1,0 +1,11 @@
+sample,bam,strandedness
+mt,test-data/mt.sorted.bam,auto
+mt_1,test-data/mt_1.sorted.bam,auto
+mt_2,test-data/mt_2.sorted.bam,auto
+mt_3,test-data/mt_3.sorted.bam,auto
+mt_4,test-data/mt_4.sorted.bam,auto
+mt_5,test-data/mt_5.sorted.bam,auto
+mt_6,test-data/mt_6.sorted.bam,auto
+mt_7,test-data/mt_7.sorted.bam,auto
+mt_8,test-data/mt_8.sorted.bam,auto
+mt_9,test-data/mt_9.sorted.bam,auto
